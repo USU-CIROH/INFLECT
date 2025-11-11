@@ -11,14 +11,48 @@ from scipy.stats import linregress
 from shapely.geometry import Point, shape, MultiPoint
 from shapely.geometry.point import Point
 from sklearn.linear_model import LinearRegression
+import raster_footprint
 from scipy.signal import find_peaks
 import seaborn as sns
-import re
+import rasterio
+from rasterio import features
+from rasterio.enums import Resampling
+import geopandas as gpd
+from shapely.ops import unary_union
+from shapely.geometry import shape
+import numpy as np
 
 def get_x_vals(y_vals, d_interval):
         x_len = round(len(y_vals) * d_interval, 4)
         x_vals = np.arange(0, x_len, d_interval)
         return(x_vals)
+
+def get_raster_boundary(dem_fp):
+    with rasterio.open(dem_fp) as src:
+        # Read at lower resolution, e.g. 1/100th (adjust as needed)
+        scale = 100
+        new_height = src.height // scale
+        new_width = src.width // scale
+        data = src.read(
+            1,
+            out_shape=(new_height, new_width),
+            resampling=Resampling.nearest
+        )
+        transform = src.transform * src.transform.scale(
+            (src.width / new_width),
+            (src.height / new_height)
+        )
+        # Build mask: True where data != nodata
+        if src.nodata is not None:
+            mask = data != src.nodata
+        else:
+            mask = ~np.isnan(data)
+        # Polygonize valid area
+        shapes = features.shapes(mask.astype("uint8"), mask=mask, transform=transform)
+        polygons = [shape(geom) for geom, val in shapes if val == 1]
+    footprint = unary_union(polygons)
+    gdf = gpd.GeoDataFrame(geometry=[footprint], crs=src.crs)
+    return gdf
     
 def multipoint_slope(windowsize, timeseries, xvals):
     dw = np.zeros(len(timeseries))
@@ -45,7 +79,7 @@ def find_boundary(xsection, bound):
     bound_index = index 
     return bound_index
 
-def calc_dwdh(reach_name, cross_sections, dem, plot_interval, d_interval, width_calc_method):
+def calc_dwdh(reach_name, cross_sections, dem_fp, plot_interval, d_interval, width_calc_method):
     # Loop through xsections and create dw/dh array for each xsection
     all_widths_df = pd.DataFrame(columns=['widths']) # df to store width arrays 
     incomplete_intersection_counter = 0
@@ -59,9 +93,14 @@ def calc_dwdh(reach_name, cross_sections, dem, plot_interval, d_interval, width_
         tot_len = line.length
         distances = np.arange(0, tot_len[0], plot_interval) 
         stations = cross_sections_row['geometry'].interpolate(distances) # specify stations in transect based on plotting interval
-        stations = gpd.GeoDataFrame(geometry=stations, crs=cross_sections.crs)
+        
         # Extract z elevation at each station along transect
-        elevs = list(dem.sample([(point.x, point.y) for point in stations.geometry]))
+        with rasterio.open(dem_fp) as src:
+            # sample() yields pixel values at the given coordinates
+            elevs = list(src.sample([(point.x, point.y) for point in stations]))
+
+        # remove elevs that were sampled in nodata zone of raster (vals are > 3.4e38)
+        elevs = [elev for elev in elevs if elev < 3e38]
 
         # Determine total depth of iterations based on max rise on the lower bank
         min_z = min(elevs)
@@ -154,7 +193,7 @@ def calc_dwdh(reach_name, cross_sections, dem, plot_interval, d_interval, width_
         # find station coordinates at thalweg
         if cross_sections_index > 0: # measure distances for all but first (most upstream) transect
             thalweg_index = elevs.index(thalweg)
-            thalweg_coords = stations.geometry[thalweg_index]
+            thalweg_coords = stations[thalweg_index]
             # Get distance from thalweg to next thalweg
             next_transect = cross_sections.iloc[cross_sections_index - 1]
             next_line = gpd.GeoDataFrame({'geometry': [next_transect['geometry']]}, crs=cross_sections.crs)
@@ -162,7 +201,8 @@ def calc_dwdh(reach_name, cross_sections, dem, plot_interval, d_interval, width_
             next_distances = np.arange(0, next_tot_len[0], plot_interval) 
             next_stations = next_transect['geometry'].interpolate(next_distances) # specify stations in transect based on plotting interval
             next_stations = gpd.GeoDataFrame(geometry=next_stations, crs=cross_sections.crs)
-            next_elevs = list(dem.sample([(point.x, point.y) for point in next_stations.geometry]))
+            with rasterio.open(dem_fp) as src:
+                next_elevs = list(src.sample([(point.x, point.y) for point in next_stations.geometry]))
             next_thalweg = min(next_elevs)
             next_thalweg_index = next_elevs.index(next_thalweg)
             next_thalweg_coords = next_stations.geometry[next_thalweg_index]
@@ -174,9 +214,10 @@ def calc_dwdh(reach_name, cross_sections, dem, plot_interval, d_interval, width_
         wh_ls_df.to_csv('data_outputs/{}/all_widths/widths_{}.csv'.format(reach_name, cross_sections_index))
         wh_append = pd.DataFrame({'widths':[wh_ls], 'transect_id':cross_sections_index, 'thalweg_elev':thalweg, 'thalweg_distance':thalweg_distance})
         all_widths_df = pd.concat([all_widths_df, wh_append], ignore_index=True)
+
     all_widths_df.to_csv('data_outputs/{}/all_widths.csv'.format(reach_name))
     return(all_widths_df)
-
+                                
 def calc_derivatives_aggregate(reach_name, d_interval, all_widths_df, slope_window, max_peak_ratio, distance_val, width_val, prominence_val):
     # Function for identifying top inflection point peaks
     def top_peaks_id(peaks_array, num_peaks):
@@ -197,7 +238,7 @@ def calc_derivatives_aggregate(reach_name, d_interval, all_widths_df, slope_wind
             max_peaks.append(peak_indices[current_max_index])
             peak_indices = np.delete(peak_indices, current_max_index)
         return max_peaks
-    
+
     # Use thalweg elevs to detrend 2nd derivatives. Don't remove intercept (keep at elevation) 
     x = np.cumsum(all_widths_df['thalweg_distance'].values).reshape((-1,1))
     y = np.array(all_widths_df['thalweg_elev'])

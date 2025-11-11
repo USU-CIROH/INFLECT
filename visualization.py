@@ -256,7 +256,8 @@ def plot_inflections(d_interval, reach_name):
     # overlay aggregate inflections
     x_vals_overlay = get_x_vals(inflections_array_agg, d_interval)
     plt.plot(x_vals_overlay, inflections_array_agg, color='black', linewidth=1.5)
-    plt.xlim(left=left_lim * d_interval)
+    # set plot xlim as range of x_vals_overlay
+    plt.xlim(left=left_lim * d_interval, right=x_vals_overlay[-1])
     plt.tight_layout()
     plt.savefig('data_outputs/{}/inflections_all.jpeg'.format(reach_name))
     return

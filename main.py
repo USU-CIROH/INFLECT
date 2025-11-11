@@ -12,19 +12,21 @@ import os
 import geopandas as gpd
 import pandas as pd
 import rasterio
+from rasterio import features
 import ast
 from shapely.geometry import Point, shape, MultiPoint
 from shapely.geometry.point import Point
+from shapely.ops import unary_union
 import numpy as np
 from matplotlib import pyplot as plt
 # import dataretrieval.nwis as nwis
 from datetime import datetime
 import sys
-from analysis import calc_dwdh, calc_derivatives_aggregate
+from analysis import calc_dwdh, calc_derivatives_aggregate, get_raster_boundary
 from visualization import output_record, plot_bankfull_increments, plot_longitudinal_profile, transect_plot, plot_inflections
 from spatial_analysis import create_bankfull_pts
 
-reach_name = 'Mad_lower' # Choose a reach name for output file identification
+reach_name = 'klamath_18010206000012' # Choose a reach name for output file identification
 
 # Steps for bankfull analysis:
 # 1. Identify benchmark bankfull using inundation rasters (Analysis.py -> id_benchmark_bankfull)
@@ -33,9 +35,12 @@ reach_name = 'Mad_lower' # Choose a reach name for output file identification
 # 4. Post-processing: plot results (Visualization.py -> plot_bankfull_increments, plot_longitudinal_bf)
 
 # Specify input data file paths in correct input folder directories
-dem_fp = 'data_inputs/dem/dem.tif' # file in 'data_inputs/dem/...' folder
-thalweg_fp = 'data_inputs/thalweg/Thalweg.shp' # file in 'data_inputs/thalweg/...' folder
-cross_sections_fp = 'data_inputs/cross_sections/transects_lower_long.shp' # file in 'data_inputs/cross_sections/...' folder
+dem_fp = 'data_inputs/dem/USGS_1M_Klamath_merged/USGS_1M_Klamath_merged.tif' # file in 'data_inputs/dem/...' folder
+# thalweg_fp = 'data_inputs/klamath_INFLECT_inputs/reach_18010206000002/18010206000002_line.shp' # file in 'data_inputs/thalweg/...' folder
+# cross_sections_fp = 'data_inputs/klamath_INFLECT_inputs/reach_18010206000002/18010206000002_transects.shp' # file in 'data_inputs/cross_sections/...' folder
+
+thalweg_fp = 'data_inputs/klamath_INFLECT_inputs/reach_18010206000012/18010206000012_line.shp' # file in 'data_inputs/thalweg/...' folder
+cross_sections_fp = 'data_inputs/klamath_INFLECT_inputs/reach_18010206000012/18010206000012_transects.shp' # file in 'data_inputs/cross_sections/...' folder
 
 # Create output folders if needed
 if not os.path.exists('data_outputs/{}'.format(reach_name)):
@@ -70,9 +75,9 @@ prominence_val = 20 # optional, the prominence required for an individual peak
 
 # Uncomment Analysis functions to run
 
-# all_widths_df = calc_dwdh(reach_name, cross_sections, dem, plot_interval, d_interval, width_calc_method) # calc widths array for each cross-section
-# calc_derivatives_aggregate(reach_name, d_interval, all_widths_df, slope_window, , max_peak_ratio, distance_val, width_val, prominence_val)
-# output_record(reach_name, slope_window, d_interval, lower_bound, upper_bound, width_calc_method)
+all_widths_df = calc_dwdh(reach_name, cross_sections, dem_fp, plot_interval, d_interval, width_calc_method) # calc widths array for each cross-section
+calc_derivatives_aggregate(reach_name, d_interval, all_widths_df, slope_window, max_peak_ratio, distance_val, width_val, prominence_val)
+output_record(reach_name, slope_window, d_interval, lower_bound, upper_bound, width_calc_method)
 
 # Plotting functions
 plot_longitudinal_profile(reach_name, dem, cross_sections, plot_interval)
