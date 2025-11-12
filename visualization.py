@@ -76,6 +76,10 @@ def plot_longitudinal_profile(reach_name, dem, cross_sections, plot_interval):
 
 def plot_bankfull_increments(reach_name, d_interval):
     all_widths_df = pd.read_csv('data_outputs/{}/all_widths.csv'.format(reach_name))
+    def get_x_vals(y_vals, d_interval):
+        x_len = round(len(y_vals) * d_interval, 4)
+        x_vals = np.arange(0, x_len, d_interval)
+        return(x_vals)
     for index, row in all_widths_df.iterrows():
         all_widths_df.at[index, 'widths'] = eval(row['widths'])
 
@@ -104,19 +108,22 @@ def plot_bankfull_increments(reach_name, d_interval):
                 left_lims.append(i)  
                 break
     left_lim = min(left_lims)
-
+    # find right plot lim as point where less than 50% of cross-sections have data
+    inflections_array = pd.read_csv('data_outputs/{}/inflections_array.csv'.format(reach_name))
+    array_range = get_x_vals(inflections_array, d_interval)
     for index, row in all_widths_df.iterrows(): 
         row = row['widths']
-        x_len = round(len(row) * d_interval, 4)
-        x_vals = np.arange(0, x_len, d_interval)
+        # x_len = round(len(row) * d_interval, 4)
+        # x_vals = np.arange(0, x_len, d_interval)
+        x_vals = get_x_vals(row, d_interval)
         # apply detrend shift to xvals
         x_vals = [x_val - fit_slope[index] for x_val in x_vals] # - intercept, optionally, to center at zero
-        plt.plot(x_vals, row, alpha=0.3, color=cmap(norm(index)), linewidth=0.75) 
+        plt.plot(x_vals, row, alpha=0.5, color=cmap(norm(index)), linewidth=1) 
     sm = ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])  # Set array to avoid warnings
     cbar = plt.colorbar(sm, ax=ax)
     cbar.set_label("Downstream distance (m)")
-    plt.xlim(left=left_lim*d_interval)
+    plt.xlim(left=left_lim*d_interval, right=array_range[-1])
     plt.savefig('data_outputs/{}/all_widths.jpeg'.format(reach_name), dpi=400)
     plt.close()
 
@@ -188,8 +195,8 @@ def plot_inflections(d_interval, reach_name):
         match = re.search(r'\d+', path)
         return int(match.group()) if match else np.nan 
     inflections_fp_sorted = sorted(inflections_fp, key=extract_num)
-    # bring in aggregated inflections array for plotting
-    inflections_array_agg = pd.read_csv('data_outputs/{}/inflections_array_agg.csv'.format(reach_name))
+    # bring in mean inflections array for plotting
+    inflections_array = pd.read_csv('data_outputs/{}/inflections_array.csv'.format(reach_name))
     # Use thalweg elevs to detrend 2nd derivatives. Don't remove intercept (keep at elevation) 
     x = np.cumsum(all_widths_df['thalweg_distance'].values).reshape((-1,1))
     y = np.array(all_widths_df['thalweg_elev'])
@@ -254,8 +261,8 @@ def plot_inflections(d_interval, reach_name):
     cbar = plt.colorbar(sm, ax=ax)
     cbar.set_label("Downstream distance (m)")
     # overlay aggregate inflections
-    x_vals_overlay = get_x_vals(inflections_array_agg, d_interval)
-    plt.plot(x_vals_overlay, inflections_array_agg, color='black', linewidth=1.5)
+    x_vals_overlay = get_x_vals(inflections_array, d_interval)
+    plt.plot(x_vals_overlay, inflections_array, color='black', linewidth=1.5)
     # set plot xlim as range of x_vals_overlay
     plt.xlim(left=left_lim * d_interval, right=x_vals_overlay[-1])
     plt.tight_layout()

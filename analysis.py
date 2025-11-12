@@ -218,7 +218,7 @@ def calc_dwdh(reach_name, cross_sections, dem_fp, plot_interval, d_interval, wid
     all_widths_df.to_csv('data_outputs/{}/all_widths.csv'.format(reach_name))
     return(all_widths_df)
                                 
-def calc_derivatives_aggregate(reach_name, d_interval, all_widths_df, slope_window, max_peak_ratio, distance_val, width_val, prominence_val):
+def inflect(reach_name, inflect_calc_method, d_interval, all_widths_df, slope_window, max_peak_ratio, distance_val, width_val, prominence_val):
     # Function for identifying top inflection point peaks
     def top_peaks_id(peaks_array, num_peaks):
         if len(peaks_array[0]) < num_peaks:
@@ -247,179 +247,141 @@ def calc_derivatives_aggregate(reach_name, d_interval, all_widths_df, slope_wind
     intercept = model.intercept_
     fit_slope = slope*x
     fit_slope = [val[0] for val in fit_slope]
-    
-    '''
-    Alt inflection point method: calc inflection points from aggregated width/depth curve
-    '''
-    # Detrended, aggregated cross_sections using padded-zeros approach
-    all_widths_df['widths_detrend'] = [[] for _ in range(len(all_widths_df))] 
-    # Loop through all_widths
-    for index, row in all_widths_df.iterrows():
-        offset = fit_slope[index]
-        offset = offset / d_interval
-        offset_int = int(offset)
-        if offset_int < 0: # most likely case, downstream xsections are lower elevation than furthest upstream
-            # populate new column of df with width values
-            all_widths_df.loc[index, 'widths_detrend'].extend([0] * abs(offset_int) + row['widths']) # add zeros to beginning of widths list. Need to unnest when using.
-        elif offset_int > 0: # this probably won't come up
-            all_widths_df.loc[index, 'widths_detrend'].extend(row[abs(offset_int):])
-        else:
-            all_widths_df.loc[index, 'widths_detrend'].extend(row['widths'])
-    # Once all offsets applied, use zero-padding aggregation method just like with non-detrended widths.
-    n_xs = len(all_widths_df.index) # number of cross_sections to use when applying requirements for number of cross_sections in aggregation
-    max_len = max(all_widths_df['widths_detrend'].apply(len)) # find the longest row in df
-    all_widths_df['widths_padded_detrend'] = all_widths_df['widths_detrend'].apply(lambda x: np.pad(x, (0, max_len - len(x)), constant_values=np.nan)) # pad all shorter rows with nan
-    padded_df_detrend = pd.DataFrame(all_widths_df['widths_padded_detrend'].tolist())
-    # drop columns element-wise in which more than half of values are nan
-    padded_df_detrend = padded_df_detrend.dropna(axis=1, thresh=n_xs * 0.5) # drop columns with less than 50% of values present
-    # calculate transect_50_detrend as the median of each column
-    # this is the aggregate cross-section for the reach
-    transect_50_detrend = padded_df_detrend.apply(lambda row: np.nanpercentile(row, 50), axis=0)
-    
-    # take second derivative of transect_50_detrend
-    xvals_agg = get_x_vals(transect_50_detrend, d_interval)
-    dw = multipoint_slope(slope_window, transect_50_detrend, xvals_agg)
-    ddw = multipoint_slope(slope_window, dw, xvals_agg)
-    # use inflection pt method to find top pos/neg peaks
-    inflections_array_agg = ddw
-    peaks_pos_agg = find_peaks(inflections_array_agg, height=max(inflections_array_agg)/max_peak_ratio, distance=distance_val, width=width_val, prominence=prominence_val) # , prominence=20) # require peaks to be at least half the mag of max peak
-    inflections_array_neg_agg = [-i for i in inflections_array_agg] # invert all signs to detect negative peaks
-    peaks_neg_agg = find_peaks(inflections_array_neg_agg, height=max(inflections_array_neg_agg)/max_peak_ratio, distance=distance_val, width=width_val, prominence=prominence_val) # prominence=20) # require peaks to be at least half the mag of max peak
-    # ID top 3 peaks in each category - positive
-    max_pos_peak_agg = top_peaks_id(peaks_pos_agg, 3)
-    # ID top 3 peaks in each category - negative
-    max_neg_peak_agg = top_peaks_id(peaks_neg_agg, 3)
 
-    # Save values and plot results
-    max_len_agg = max(len(peaks_pos_agg[0]), len(peaks_neg_agg[0]))
-    pos_peak_indices_pad_agg = max_pos_peak_agg + [np.nan] * (max_len_agg - len(max_pos_peak_agg))
-    neg_peak_indices_pad_agg = max_neg_peak_agg + [np.nan] * (max_len_agg - len(max_neg_peak_agg))
-    pd.DataFrame(inflections_array_agg).to_csv('data_outputs/{}/inflections_array_agg.csv'.format(reach_name), index=False)
-    max_inflections_df_agg = pd.DataFrame({'pos_inflections':pos_peak_indices_pad_agg, 'neg_inflections':neg_peak_indices_pad_agg})
-    max_inflections_df_agg.to_csv('data_outputs/{}/max_inflections_aggregate.csv'.format(reach_name))
+    if inflect_calc_method == 'cross-section':
+        '''
+        Inflection Point Methodology: Calc inflections from each cross-section then take the average of results. 
+        '''
+        # Calculate 2nd derivatives to get inflections of width arrays
+        ddw_ls = []
+        for x_index, xsection in enumerate(all_widths_df['widths']): # loop through all x-sections
+            dw = []
+            ddw = []
+            xs_xvals = get_x_vals(xsection, d_interval)
+            dw = multipoint_slope(slope_window, xsection, xs_xvals)
+            ddw = multipoint_slope(slope_window, dw, xs_xvals)
+            pd.DataFrame({'ddw':ddw}).to_csv('data_outputs/{}/second_order_roc/{}_roc.csv'.format(reach_name, x_index))
+            ddw_ls.append(ddw)
 
-    # Determine x-vals for plotting
-    x_range = range(0, len(inflections_array_agg))
-    x_vals = list(x_range)
-    x_vals = [i * d_interval - intercept for i in x_vals]
-    fig, ax = plt.subplots()
-    plt.plot(x_vals, inflections_array_agg, color='black')
-    plt.xlim(left=-5)
+        inflections_ls = []
+        for index, inflections in enumerate(ddw_ls):
+            # Incorporate detrend as a shift in 2nd derivative array
+            # Should be raising all values after first transect. So they start later. 
+            if not isinstance(inflections, list):
+                inflections = inflections.tolist()
+            offset = fit_slope[index]
+            offset = offset / d_interval
+            offset_int = int(offset)
+            if offset_int < 0:
+                inflections = [0] * abs(offset_int) + inflections
+            else: # Only other case is no detrend (first transect)
+                inflections = inflections
+            inflections_ls.append(inflections)
+            
+        # convert list of lists into dataframe
+        inflections_df = pd.DataFrame(inflections_ls)
+        n_xs = len(inflections_df.index)
+        inflections_df = inflections_df.dropna(axis=1, thresh=n_xs * 0.5) # drop columns with less than 50% of values present
 
-    for index, peak in enumerate(max_pos_peak_agg):
-        if index == 0:
-            plt.axvline(peak/10 - intercept, color='red', label='positive inflections')
-        else:
-            plt.axvline(peak/10 - intercept, color='red')
-    for index, peak in enumerate(max_neg_peak_agg):
-        if index == 0:
-            plt.axvline(peak/10 - intercept, color='blue', label='negative inflections')
-        else:
-            plt.axvline(peak/10 - intercept, color='blue')
-    
-    plt.title('Inflection Points Density, Aggregate Method')
-    plt.xlabel('Detrended elevation (m)')
-    plt.ylabel('Second derivative')
-    # plt.text(.5, .5, str(round(max(inflections_array), 3)))
-    plt.legend()
-    plt.savefig('data_outputs/{}/inflection_pt_density_plot_agg.jpeg'.format(reach_name))
-    plt.close()
-    
-    '''
-    Inflection Point Methodology
-    '''
-    # Calculate 2nd derivatives to get inflections of width arrays
-    ddw_ls = []
-    for x_index, xsection in enumerate(all_widths_df['widths']): # loop through all x-sections
-        dw = []
-        ddw = []
-        xs_xvals = get_x_vals(xsection, d_interval)
-        dw = multipoint_slope(slope_window, xsection, xs_xvals)
-        ddw = multipoint_slope(slope_window, dw, xs_xvals)
-        pd.DataFrame({'ddw':ddw}).to_csv('data_outputs/{}/second_order_roc/{}_roc.csv'.format(reach_name, x_index))
-        ddw_ls.append(ddw)
+        # Aggregate all arrays together by averaging across all rows in df
+        inflections_array = inflections_df.mean(axis=0, skipna=True)
 
-    inflections_ls = []
-    for index, inflections in enumerate(ddw_ls):
-        # Incorporate detrend as a shift in 2nd derivative array
-        # Should be raising all values after first transect. So they start later. 
-        if not isinstance(inflections, list):
-            inflections = inflections.tolist()
-        offset = fit_slope[index]
-        offset = offset / d_interval
-        offset_int = int(offset)
-        if offset_int < 0:
-            inflections = [0] * abs(offset_int) + inflections
-        else: # Only other case is no detrend (first transect)
-            inflections = inflections
-        inflections_ls.append(inflections)
+        # identify top three peaks (across positive and negative)
+        peaks_pos = find_peaks(inflections_array, height=max(inflections_array)/max_peak_ratio, distance=distance_val, width=width_val) #, prominence=prominence_val) # require peaks to be at least half the mag of max peak
+        inflections_array_neg = [-i for i in inflections_array] # invert all signs to detect negative peaks
+        peaks_neg = find_peaks(inflections_array_neg, height=max(inflections_array_neg)/max_peak_ratio, distance=distance_val, width=width_val) #, prominence=prominence_val) # require peaks to be at least half the mag of max peak
+        # save peak locs for plotting along wd and cross_sections
+        # ID top 3 peaks in each category - positive
+        max_pos_peak = top_peaks_id(peaks_pos, 3)
+        # ID top 3 peaks in each category - negative
+        max_neg_peak = top_peaks_id(peaks_neg, 3)
         
-    # convert list of lists into dataframe
-    inflections_df = pd.DataFrame(inflections_ls)
-    n_xs = len(inflections_df.index)
-    inflections_df = inflections_df.dropna(axis=1, thresh=n_xs * 0.5) # drop columns with less than 50% of values present
+        # Save max positive and negative inflections (bankfull range)
+        max_len = max(len(max_pos_peak), len(max_neg_peak))
+        pos_peak_indices_pad = max_pos_peak + [np.nan] * (max_len - len(max_pos_peak))
+        neg_peak_indices_pad = max_neg_peak + [np.nan] * (max_len - len(max_neg_peak))
+        max_inflections_df = pd.DataFrame({'pos_inflections':pos_peak_indices_pad, 'neg_inflections':neg_peak_indices_pad})
+        max_inflections_df.to_csv('data_outputs/{}/max_inflections.csv'.format(reach_name))
+        inflections_array.to_csv('data_outputs/{}/inflections_array.csv'.format(reach_name), index=False)
+        # there it is! 
 
-    # Aggregate all arrays together by averaging across all rows in df
-    inflections_array = inflections_df.mean(axis=0, skipna=True)
+    if inflect_calc_method == 'aggregate':    
+        '''
+        Alt inflection point method: calc inflection points from aggregated width/depth curve
+        '''
+        # Detrended, aggregated cross_sections using padded-zeros approach
+        all_widths_df['widths_detrend'] = [[] for _ in range(len(all_widths_df))] 
+        # Loop through all_widths
+        for index, row in all_widths_df.iterrows():
+            offset = fit_slope[index]
+            offset = offset / d_interval
+            offset_int = int(offset)
+            if offset_int < 0: # most likely case, downstream xsections are lower elevation than furthest upstream
+                # populate new column of df with width values
+                all_widths_df.loc[index, 'widths_detrend'].extend([0] * abs(offset_int) + row['widths']) # add zeros to beginning of widths list. Need to unnest when using.
+            elif offset_int > 0: # this probably won't come up
+                all_widths_df.loc[index, 'widths_detrend'].extend(row[abs(offset_int):])
+            else:
+                all_widths_df.loc[index, 'widths_detrend'].extend(row['widths'])
+        # Once all offsets applied, use zero-padding aggregation method just like with non-detrended widths.
+        n_xs = len(all_widths_df.index) # number of cross_sections to use when applying requirements for number of cross_sections in aggregation
+        max_len = max(all_widths_df['widths_detrend'].apply(len)) # find the longest row in df
+        all_widths_df['widths_padded_detrend'] = all_widths_df['widths_detrend'].apply(lambda x: np.pad(x, (0, max_len - len(x)), constant_values=np.nan)) # pad all shorter rows with nan
+        padded_df_detrend = pd.DataFrame(all_widths_df['widths_padded_detrend'].tolist())
+        # drop columns element-wise in which more than half of values are nan
+        padded_df_detrend = padded_df_detrend.dropna(axis=1, thresh=n_xs * 0.5) # drop columns with less than 50% of values present
+        # calculate transect_50_detrend as the median of each column
+        # this is the aggregate cross-section for the reach
+        transect_50_detrend = padded_df_detrend.apply(lambda row: np.nanpercentile(row, 50), axis=0)
+        
+        # take second derivative of transect_50_detrend
+        xvals_agg = get_x_vals(transect_50_detrend, d_interval)
+        dw = multipoint_slope(slope_window, transect_50_detrend, xvals_agg)
+        ddw = multipoint_slope(slope_window, dw, xvals_agg)
+        # use inflection pt method to find top pos/neg peaks
+        inflections_array_agg = ddw
+        peaks_pos_agg = find_peaks(inflections_array_agg, height=max(inflections_array_agg)/max_peak_ratio, distance=distance_val, width=width_val, prominence=prominence_val) # , prominence=20) # require peaks to be at least half the mag of max peak
+        inflections_array_neg_agg = [-i for i in inflections_array_agg] # invert all signs to detect negative peaks
+        peaks_neg_agg = find_peaks(inflections_array_neg_agg, height=max(inflections_array_neg_agg)/max_peak_ratio, distance=distance_val, width=width_val, prominence=prominence_val) # prominence=20) # require peaks to be at least half the mag of max peak
+        # ID top 3 peaks in each category - positive
+        max_pos_peak_agg = top_peaks_id(peaks_pos_agg, 3)
+        # ID top 3 peaks in each category - negative
+        max_neg_peak_agg = top_peaks_id(peaks_neg_agg, 3)
 
-    # identify top three peaks (across positive and negative)
-    peaks_pos = find_peaks(inflections_array, height=max(inflections_array)/max_peak_ratio, distance=distance_val, width=width_val) #, prominence=prominence_val) # require peaks to be at least half the mag of max peak
-    inflections_array_neg = [-i for i in inflections_array] # invert all signs to detect negative peaks
-    peaks_neg = find_peaks(inflections_array_neg, height=max(inflections_array_neg)/max_peak_ratio, distance=distance_val, width=width_val) #, prominence=prominence_val) # require peaks to be at least half the mag of max peak
-    # save peak locs for plotting along wd and cross_sections
-    # ID top 3 peaks in each category - positive
-    max_pos_peak = top_peaks_id(peaks_pos, 3)
+        # Save values and plot results
+        max_len_agg = max(len(peaks_pos_agg[0]), len(peaks_neg_agg[0]))
+        pos_peak_indices_pad_agg = max_pos_peak_agg + [np.nan] * (max_len_agg - len(max_pos_peak_agg))
+        neg_peak_indices_pad_agg = max_neg_peak_agg + [np.nan] * (max_len_agg - len(max_neg_peak_agg))
+        pd.DataFrame(inflections_array_agg).to_csv('data_outputs/{}/inflections_array_alt.csv'.format(reach_name), index=False)
+        max_inflections_df_agg = pd.DataFrame({'pos_inflections':pos_peak_indices_pad_agg, 'neg_inflections':neg_peak_indices_pad_agg})
+        max_inflections_df_agg.to_csv('data_outputs/{}/max_inflections_alt.csv'.format(reach_name))
 
-    # ID top 3 peaks in each category - negative
-    max_neg_peak = top_peaks_id(peaks_neg, 3)
+        # Determine x-vals for plotting
+        x_range = range(0, len(inflections_array_agg))
+        x_vals = list(x_range)
+        x_vals = [i * d_interval - intercept for i in x_vals]
+        fig, ax = plt.subplots()
+        plt.plot(x_vals, inflections_array_agg, color='black')
+        plt.xlim(left=-5)
+
+        for index, peak in enumerate(max_pos_peak_agg):
+            if index == 0:
+                plt.axvline(peak/10 - intercept, color='red', label='positive inflections')
+            else:
+                plt.axvline(peak/10 - intercept, color='red')
+        for index, peak in enumerate(max_neg_peak_agg):
+            if index == 0:
+                plt.axvline(peak/10 - intercept, color='blue', label='negative inflections')
+            else:
+                plt.axvline(peak/10 - intercept, color='blue')
+        
+        plt.title('Inflection Points Density, Aggregate Method')
+        plt.xlabel('Detrended elevation (m)')
+        plt.ylabel('Second derivative')
+        # plt.text(.5, .5, str(round(max(inflections_array), 3)))
+        plt.legend()
+        plt.savefig('data_outputs/{}/inflection_pt_density_plot_agg.jpeg'.format(reach_name))
+        plt.close()
     
-    # Plot results density-style
-    # Determine x-vals for plotting
-    x_range = range(0, len(inflections_array))
-    x_vals = list(x_range)
-    x_vals = [i * d_interval - intercept for i in x_vals]
     
-    fig, ax = plt.subplots()
-    plt.plot(x_vals, inflections_array, color='black')
-    # plt.xlim(-5, 25)
-
-    for index, peak in enumerate(max_pos_peak):
-        if index == 0:
-            plt.axvline(peak/10 - intercept, color='red', label='positive inflections')
-        else:
-            plt.axvline(peak/10 - intercept, color='red')
-    for index, peak in enumerate(max_neg_peak):
-        if index == 0:
-            plt.axvline(peak/10 - intercept, color='blue', label='negative inflections')
-        else:
-            plt.axvline(peak/10 - intercept, color='blue')
-    
-    plt.title('Inflection Points Density')
-    plt.xlabel('Detrended elevation (m)')
-    plt.ylabel('Second derivative')
-    plt.legend()
-    plt.xlim(left=-5)
-    plt.savefig('data_outputs/{}/inflection_pt_density_plot_xs.jpeg'.format(reach_name))
-    plt.close()
-    # Save max positive and negative inflections (bankfull range)
-    max_len = max(len(max_pos_peak), len(max_neg_peak))
-    pos_peak_indices_pad = max_pos_peak + [np.nan] * (max_len - len(max_pos_peak))
-    neg_peak_indices_pad = max_neg_peak + [np.nan] * (max_len - len(max_neg_peak))
-    max_inflections_df = pd.DataFrame({'pos_inflections':pos_peak_indices_pad, 'neg_inflections':neg_peak_indices_pad})
-    max_inflections_df.to_csv('data_outputs/{}/max_inflections.csv'.format(reach_name))
-
-    # Create a plot overlaying inflections_array_agg and inflections_array
-    x_vals = get_x_vals(inflections_array, d_interval)
-    x_vals_agg = get_x_vals(inflections_array_agg, d_interval)
-    fig, ax = plt.subplots()
-    plt.plot(x_vals_agg, inflections_array_agg, color='black', label='Aggregate Inflections')
-    plt.plot(x_vals, inflections_array, color='green', label='Cross-section Inflections')
-    # plt.xlim(left=60)
-    plt.xlabel('Detrended elevation (m)')
-    plt.ylabel('Second derivative')
-    plt.legend()
-    plt.title('Inflection Points Density, Aggregate vs Cross-section')
-    plt.savefig('data_outputs/{}/inflection_pt_density_plot_agg_vs_xs.jpeg'.format(reach_name))
-    plt.close()
-    # there it is! 
     

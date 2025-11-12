@@ -22,7 +22,7 @@ from matplotlib import pyplot as plt
 # import dataretrieval.nwis as nwis
 from datetime import datetime
 import sys
-from analysis import calc_dwdh, calc_derivatives_aggregate, get_raster_boundary
+from analysis import calc_dwdh, inflect, get_raster_boundary
 from visualization import output_record, plot_bankfull_increments, plot_longitudinal_profile, transect_plot, plot_inflections
 from spatial_analysis import create_bankfull_pts
 
@@ -68,6 +68,7 @@ upper_bound = 100 # Set upper vertical boundary for inflection id within cross-s
 spatial_plot_interval = 0.5 # interval for finding inflection elevation along cross_sections.
 width_calc_method = 'partial' # 'continuous' 'partial' - choose from either partial additive widths or continuous-only methods of width calculation.
 # peak detection parameters
+inflect_calc_method = 'cross-section' # 'cross-section' or 'aggregate' method for inflection calculation. 'cross-section' is default. 
 max_peak_ratio = 2 # The ratio of max peak:detected peak. Default val 2 means the detected peak must be one half the magnitude of the maximum peak. 
 distance_val = 5 # The minimum distance required between individual peaks
 width_val = 2 # The minumum width of an individual peak at the base
@@ -75,9 +76,9 @@ prominence_val = 20 # optional, the prominence required for an individual peak
 
 # Uncomment Analysis functions to run
 
-all_widths_df = calc_dwdh(reach_name, cross_sections, dem_fp, plot_interval, d_interval, width_calc_method) # calc widths array for each cross-section
-calc_derivatives_aggregate(reach_name, d_interval, all_widths_df, slope_window, max_peak_ratio, distance_val, width_val, prominence_val)
-output_record(reach_name, slope_window, d_interval, lower_bound, upper_bound, width_calc_method)
+# all_widths_df = calc_dwdh(reach_name, cross_sections, dem_fp, plot_interval, d_interval, width_calc_method) # calc widths array for each cross-section
+# inflect(reach_name, inflect_calc_method, d_interval, all_widths_df, slope_window, max_peak_ratio, distance_val, width_val, prominence_val)
+# output_record(reach_name, slope_window, d_interval, lower_bound, upper_bound, width_calc_method)
 
 # Plotting functions
 plot_longitudinal_profile(reach_name, dem, cross_sections, plot_interval)
