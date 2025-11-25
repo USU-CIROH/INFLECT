@@ -1,6 +1,8 @@
 
 data_inputs/
 data_outputs/
+example_inputs/
+example_outputs/
 my-virtualenv/
 figures/
 *.pyc
