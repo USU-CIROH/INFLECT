@@ -101,12 +101,11 @@ def calc_dwdh(reach_name, cross_sections, dem_fp, plot_interval, d_interval, wid
 
         # remove elevs that were sampled in nodata zone of raster (vals are > 3.4e38)
         elevs = [elev for elev in elevs if elev < 3e38]
-
         # Determine total depth of iterations based on max rise on the lower bank
-        min_z = min(elevs)
-        min_y = list(elevs).index(min_z)
-        max_left_bank = max(list(elevs)[0:min_y])
-        max_right_bank = max(list(elevs)[min_y:])
+        # Assumes cross-section is roughly centered on channel thalweg
+        halfway_pt = len(elevs)//2
+        max_left_bank = max(list(elevs)[0:halfway_pt])
+        max_right_bank = max(list(elevs)[halfway_pt:])
 
         if max_right_bank < max_left_bank:
             max_depth = max_right_bank

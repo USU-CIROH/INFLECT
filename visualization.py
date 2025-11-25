@@ -10,11 +10,13 @@ from sklearn.linear_model import LinearRegression
 import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
+import rasterio
 
-def plot_longitudinal_profile(reach_name, dem, cross_sections, plot_interval):
+def plot_longitudinal_profile(reach_name, dem_fp, cross_sections, plot_interval):
     # Extract and detrend thalweg for plotting
     thalweg_distances = []
     thalweg_line = []
+    dem = rasterio.open(dem_fp)
     for cross_sections_index, cross_sections_row in cross_sections.iterrows():
         line = gpd.GeoDataFrame({'geometry': [cross_sections_row['geometry']]}, crs=cross_sections.crs) 
         # Generate a spaced interval of stations along each xsection for plotting
@@ -24,6 +26,8 @@ def plot_longitudinal_profile(reach_name, dem, cross_sections, plot_interval):
         stations = gpd.GeoDataFrame(geometry=stations, crs=cross_sections.crs)
         # Extract z elevation at each station along transect
         elevs = list(dem.sample([(point.x, point.y) for point in stations.geometry]))
+        # remove elevs that were sampled in nodata zone of raster (vals are > 3.4e38)
+        elevs = [elev for elev in elevs if elev < 3e38]
 
         thalweg = min(elevs) # track this for use later in detrending
         thalweg_line.append(thalweg)
@@ -64,6 +68,7 @@ def plot_longitudinal_profile(reach_name, dem, cross_sections, plot_interval):
         thalweg_detrend.append(val - fit_slope[index])
     # Plot logitudinal profile
     # breakpoint()
+    df = pd.DataFrame({'thalweg':thalweg_line}); df.to_csv('data_outputs/thalweg.csv')
     fig, ax = plt.subplots()
     plt.xlabel('Cross-sections from upstream to downstream (m)')
     plt.ylabel('Elevation (m)')
@@ -127,11 +132,10 @@ def plot_bankfull_increments(reach_name, d_interval):
     plt.savefig('data_outputs/{}/all_widths.jpeg'.format(reach_name), dpi=400)
     plt.close()
 
-def transect_plot(cross_sections, dem, plot_interval, d_interval, reach_name):
-    # topo_bankfull = pd.read_csv('data/data_outputs/{}/bankfull_topo.csv'.format(reach_name))
-    inflections = pd.read_csv('data_outputs/{}/max_inflections_aggregate.csv'.format(reach_name))
+def transect_plot(cross_sections, dem_fp, plot_interval, d_interval, reach_name):
+    inflections = pd.read_csv('data_outputs/{}/max_inflections.csv'.format(reach_name))
     all_widths_df = pd.read_csv('data_outputs/{}/all_widths.csv'.format(reach_name))
-
+    dem = rasterio.open(dem_fp)
     # Use thalweg to detrend elevation on y-axes for transect plotting. Don't remove intercept (keep at elevation) 
     x = np.array(all_widths_df['transect_id']).reshape((-1, 1))
     y = np.array(all_widths_df['thalweg_elev'])
@@ -151,6 +155,8 @@ def transect_plot(cross_sections, dem, plot_interval, d_interval, reach_name):
         stations = gpd.GeoDataFrame(geometry=stations, crs=cross_sections.crs)
         # Extract z elevation at each station along transect
         elevs = list(dem.sample([(point.x, point.y) for point in stations.geometry]))
+        # remove elevs that were sampled in nodata zone of raster (vals are > 3.4e38)
+        elevs = [elev for elev in elevs if elev < 3e38]
 
         # Arrange points together for plotting
         def get_x_vals(y_vals):
@@ -158,7 +164,8 @@ def transect_plot(cross_sections, dem, plot_interval, d_interval, reach_name):
             x_vals = np.arange(0, x_len, d_interval)
             return(x_vals)
         fig = plt.figure(figsize=(6,8))
-        plt.plot(distances, elevs, color='black', linestyle='-', label='Cross section')
+        x_vals = get_x_vals(elevs)
+        plt.plot(x_vals, elevs, color='black', linestyle='-', label='Cross section')
         for index, x in enumerate(inflections['pos_inflections']):
             if index == 0:
                 plt.axhline(x*d_interval, color='red', label='positive inflections', linewidth=2)

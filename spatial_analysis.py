@@ -16,10 +16,11 @@ from sklearn.linear_model import LinearRegression
 
 
 """Function for creating mapping points from bankfull results to overlay on cross-sections"""
-def create_bankfull_pts(cross_sections, dem, thalweg, d_interval, spatial_plot_interval, reach_name):
+def create_bankfull_pts(cross_sections, dem_fp, thalweg, d_interval, spatial_plot_interval, reach_name):
     all_widths_df = pd.read_csv('data_outputs/{}/all_widths.csv'.format(reach_name))
     # Create a multipoint object of bankfull extent from the cross-section and aggregate bankfull elevation data
-    inflections = pd.read_csv('data_outputs/{}/max_inflections_aggregate.csv'.format(reach_name))
+    inflections = pd.read_csv('data_outputs/{}/max_inflections.csv'.format(reach_name))
+    dem = rasterio.open(dem_fp)
 
     pos_inflections = inflections['pos_inflections']
     neg_inflections = inflections['neg_inflections']
