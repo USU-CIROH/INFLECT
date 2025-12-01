@@ -12,7 +12,8 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 import rasterio
 
-def plot_longitudinal_profile(reach_name, dem_fp, cross_sections, plot_interval):
+def plot_longitudinal_profile(reach_name, all_widths_df, dem_fp, cross_sections, plot_interval):
+    all_widths_df = pd.read_csv('data_outputs/{}/all_widths.csv'.format(reach_name))
     # Extract and detrend thalweg for plotting
     thalweg_distances = []
     thalweg_line = []
@@ -55,8 +56,9 @@ def plot_longitudinal_profile(reach_name, dem_fp, cross_sections, plot_interval)
             thalweg_distances.append(thalweg_distance + thalweg_distances[cross_sections_index-1])
 
     thalweg_detrend = []
-    x_vals_thalweg = np.arange(0, len(thalweg_line))
-    x = np.array(x_vals_thalweg).reshape(-1, 1)
+    # x_vals_thalweg = np.arange(0, len(thalweg_line))
+    # x = np.array(x_vals_thalweg).reshape(-1, 1)
+    x = np.cumsum(all_widths_df['thalweg_distance'].values).reshape((-1,1))
     y = np.array(thalweg_line)
     model = LinearRegression().fit(x, y)
     slope = model.coef_
@@ -89,7 +91,7 @@ def plot_bankfull_increments(reach_name, d_interval):
         all_widths_df.at[index, 'widths'] = eval(row['widths'])
 
     # Detrend widths before plotting based on thalweg elevation, and start plotting point based on detrend
-    x = np.array(all_widths_df['transect_id']).reshape((-1, 1))
+    x = np.cumsum(all_widths_df['thalweg_distance'].values).reshape((-1,1))
     y = np.array(all_widths_df['thalweg_elev'])
     model = LinearRegression().fit(x, y)
     slope = model.coef_
@@ -136,8 +138,8 @@ def transect_plot(cross_sections, dem_fp, plot_interval, d_interval, reach_name)
     inflections = pd.read_csv('data_outputs/{}/max_inflections.csv'.format(reach_name))
     all_widths_df = pd.read_csv('data_outputs/{}/all_widths.csv'.format(reach_name))
     dem = rasterio.open(dem_fp)
-    # Use thalweg to detrend elevation on y-axes for transect plotting. Don't remove intercept (keep at elevation) 
-    x = np.array(all_widths_df['transect_id']).reshape((-1, 1))
+    # Use thalweg elevations to detrend elevation on y-axes for transect plotting. Don't remove intercept (keep at elevation) 
+    x = np.cumsum(all_widths_df['thalweg_distance'].values).reshape((-1,1))
     y = np.array(all_widths_df['thalweg_elev'])
     model = LinearRegression().fit(x, y)
     slope = model.coef_
@@ -168,14 +170,14 @@ def transect_plot(cross_sections, dem_fp, plot_interval, d_interval, reach_name)
         plt.plot(x_vals, elevs, color='black', linestyle='-', label='Cross section')
         for index, x in enumerate(inflections['pos_inflections']):
             if index == 0:
-                plt.axhline(x*d_interval, color='red', label='positive inflections', linewidth=2)
+                plt.axhline(x + fit_slope[transects_index], color='red', label='positive inflections', linewidth=2)
             else:
-                plt.axhline(x*d_interval, color='red', linewidth=2)
+                plt.axhline(x + fit_slope[transects_index], color='red', linewidth=2)
         for index, x in enumerate(inflections['neg_inflections']):
             if index == 0:
-                plt.axhline(x*d_interval, color='blue', label='negative inflections', linewidth=2)
+                plt.axhline(x + fit_slope[transects_index], color='blue', label='negative inflections', linewidth=2)
             else:
-                plt.axhline(x*d_interval, color='blue', linewidth=2)
+                plt.axhline(x + fit_slope[transects_index], color='blue', linewidth=2)
 
         plt.xlabel('Cross section distance (meters)', fontsize=16)
         plt.ylabel('Elevation (meters)', fontsize=16)
@@ -255,14 +257,14 @@ def plot_inflections(d_interval, reach_name):
                break
     for index, x in enumerate(inflections['pos_inflections']):
         if index == 0:
-            plt.axvline(x*d_interval, color='red', label='positive inflections', linewidth=2)
+            plt.axvline(x, color='red', label='positive inflections', linewidth=2)
         else:
-            plt.axvline(x*d_interval, color='red', linewidth=2)
+            plt.axvline(x, color='red', linewidth=2)
     for index, x in enumerate(inflections['neg_inflections']):
         if index == 0:
-            plt.axvline(x*d_interval, color='blue', label='negative inflections', linewidth=2)
+            plt.axvline(x, color='blue', label='negative inflections', linewidth=2)
         else:
-            plt.axvline(x*d_interval, color='blue', linewidth=2)
+            plt.axvline(x, color='blue', linewidth=2)
     sm = ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])  # Set array to avoid warnings
     cbar = plt.colorbar(sm, ax=ax)
@@ -276,7 +278,7 @@ def plot_inflections(d_interval, reach_name):
     plt.savefig('data_outputs/{}/inflections_all.jpeg'.format(reach_name))
     return
 
-def output_record(reach_name, slope_window, d_interval, lower_bound, upper_bound, width_calc_method):
+def output_record(reach_name, slope_window, d_interval, lower_bound, upper_bound, width_calc_method, units):
     inflections = pd.read_csv('data_outputs/{}/max_inflections.csv'.format(reach_name))
     # Consolidate 'pos_inflections' and 'neg_inflections' columns into single lists
     pos_inflections_all = []
@@ -287,5 +289,5 @@ def output_record(reach_name, slope_window, d_interval, lower_bound, upper_bound
         neg_inflections_all.append(val)
     record_df = pd.DataFrame({'positive inflections':[pos_inflections_all], 'negative inflections':[neg_inflections_all], \
                               'width calc method':[width_calc_method], 'derivative slope_window': [slope_window], 'width calc interval (m)': [d_interval], 'lower_search_bound': [lower_bound], \
-                                'upper_search_bound': [upper_bound]})
+                                'upper_search_bound': [upper_bound], 'units':[units]})
     record_df.to_csv('data_outputs/{}/Summary_results.csv'.format(reach_name))

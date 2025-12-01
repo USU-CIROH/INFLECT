@@ -33,27 +33,26 @@ from spatial_analysis import create_bankfull_pts
 # 3. Calculate first and second order derivatives of the channel widths to identify topographic bankfull (Analysis.py -> calc_derivatives)
 # 4. Post-processing: plot results (Visualization.py -> plot_bankfull_increments, plot_longitudinal_bf)
 
-
-
 # Set INFLECT algorithm parameters
+units = 'meters' # based on units in DEM
 plot_interval = 1 # set plotting interval along transect in units of meters
-d_interval = 10/100 # Set intervals to step up in depth (in units meters). Default is 10cm intervals
-slope_window = 10 # Set window size for calculating slope for derivatives
+d_interval = 10/100 # Set intervals to step up in cross-section depth. Default is units meters and 1/10m intervals
+slope_window = 10 # Set window size for calculating slope for derivatives. Set in d_interval units. 
 lower_bound = 5 # Set lower vertical boundary for inflection id within cross-section, in units of d_interval. Default 5 = 50cm
 upper_bound = 100 # Set upper vertical boundary for inflection id within cross-section, in units of d_interval. Default 100 = 10m
-spatial_plot_interval = 0.5 # interval for finding inflection elevation along cross_sections.
+spatial_plot_interval = 0.5 # interval to measure elevations along transects, default units meters.
 width_calc_method = 'partial' # 'continuous' 'partial' - choose from either partial additive widths or continuous-only methods of width calculation.
 # peak detection parameters
 inflect_calc_method = 'cross-section' # 'cross-section' or 'aggregate' method for inflection calculation. 'cross-section' is default. 
 max_peak_ratio = 2 # The ratio of max peak:detected peak. Default val 2 means the detected peak must be one half the magnitude of the maximum peak. 
-distance_val = 5 # The minimum distance required between individual peaks
-width_val = 2 # The minumum width of an individual peak at the base
-prominence_val = 20 # optional, the prominence required for an individual peak
+distance_val = 5 # The minimum distance required between individual peaks, unitless
+width_val = 2 # The minumum width of an individual peak at the base, unitless
+prominence_val = 20 # optional, the prominence required for an individual peak, unitless
 
 # Specify input data file paths in correct input folder directories
-dem_fp = 'data_inputs/dem/USGS_1M_Klamath_merged/USGS_1M_Klamath_merged.tif' # file in 'data_inputs/dem/...' folder
-thalweg_fp = ['data_inputs/klamath_INFLECT_inputs/reach_18010206000027/18010206000027_line.shp']
-cross_sections_fp = ['data_inputs/klamath_INFLECT_inputs/reach_18010206000027/18010206000027_transects.shp']
+dem_fp = 'data_inputs/dem/Leggett/dem.tif' # file in 'data_inputs/dem/...' folder
+thalweg_fp = ['data_inputs/thalweg/thalweg.shp']
+cross_sections_fp = ['data_inputs/cross_sections/cross-sections.shp']
 
 
 inputs_ls = pd.DataFrame({'thalwegs':thalweg_fp, 'cross-sections':cross_sections_fp})
@@ -62,7 +61,7 @@ inputs_ls = inputs_ls.reset_index()
 for index, row in inputs_ls.iterrows():
     # get reach name from thalweg file path third element when split by'/'  
     # reach_name = row['thalwegs'].split('/')[2]
-    reach_name = 'example'
+    reach_name = 'leggett'
 
     # Create output folders if needed
     if not os.path.exists('data_outputs/{}'.format(reach_name)):
@@ -82,10 +81,10 @@ for index, row in inputs_ls.iterrows():
 
     all_widths_df = calc_dwdh(reach_name, cross_sections, dem_fp, plot_interval, d_interval, width_calc_method) # calc widths array for each cross-section
     inflect(reach_name, inflect_calc_method, d_interval, all_widths_df, slope_window, max_peak_ratio, distance_val, width_val, prominence_val)
-    output_record(reach_name, slope_window, d_interval, lower_bound, upper_bound, width_calc_method)
+    output_record(reach_name, slope_window, d_interval, lower_bound, upper_bound, width_calc_method, units)
 
     # Plotting functions
-    plot_longitudinal_profile(reach_name, dem_fp, cross_sections, plot_interval)
+    plot_longitudinal_profile(reach_name, all_widths_df, dem_fp, cross_sections, plot_interval)
     plot_bankfull_increments(reach_name, d_interval)
     transect_plot(cross_sections, dem_fp, plot_interval, d_interval, reach_name)
     plot_inflections(d_interval, reach_name)

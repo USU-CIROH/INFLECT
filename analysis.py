@@ -294,11 +294,21 @@ def inflect(reach_name, inflect_calc_method, d_interval, all_widths_df, slope_wi
         max_pos_peak = top_peaks_id(peaks_pos, 3)
         # ID top 3 peaks in each category - negative
         max_neg_peak = top_peaks_id(peaks_neg, 3)
-        
+
+        # Put inflections back in units meters
+        def convert_m(peaks_ls, d_interval):
+            peaks_m = []
+            for peak in peaks_ls:
+                peak_m = peak * d_interval
+                peaks_m.append(peak_m)
+            return peaks_m
+        max_pos_peak_m = convert_m(max_pos_peak, d_interval)
+        max_neg_peak_m = convert_m(max_neg_peak, d_interval)
+
         # Save max positive and negative inflections (bankfull range)
-        max_len = max(len(max_pos_peak), len(max_neg_peak))
-        pos_peak_indices_pad = max_pos_peak + [np.nan] * (max_len - len(max_pos_peak))
-        neg_peak_indices_pad = max_neg_peak + [np.nan] * (max_len - len(max_neg_peak))
+        max_len = max(len(max_pos_peak_m), len(max_neg_peak_m))
+        pos_peak_indices_pad = max_pos_peak_m + [np.nan] * (max_len - len(max_pos_peak_m))
+        neg_peak_indices_pad = max_neg_peak_m + [np.nan] * (max_len - len(max_neg_peak_m))
         max_inflections_df = pd.DataFrame({'pos_inflections':pos_peak_indices_pad, 'neg_inflections':neg_peak_indices_pad})
         max_inflections_df.to_csv('data_outputs/{}/max_inflections.csv'.format(reach_name))
         inflections_array.to_csv('data_outputs/{}/inflections_array.csv'.format(reach_name), index=False)
@@ -347,10 +357,20 @@ def inflect(reach_name, inflect_calc_method, d_interval, all_widths_df, slope_wi
         # ID top 3 peaks in each category - negative
         max_neg_peak_agg = top_peaks_id(peaks_neg_agg, 3)
 
+        # Put inflections back in units meters
+        def convert_m(peaks_ls, d_interval):
+            peaks_m = []
+            for peak in peaks_ls:
+                peak_m = peak * d_interval
+                peaks_m.append(peak_m)
+            return peaks_m
+        max_pos_peak_m = convert_m(max_pos_peak_agg, d_interval)
+        max_neg_peak_m = convert_m(max_neg_peak_agg, d_interval)
+
         # Save values and plot results
-        max_len_agg = max(len(peaks_pos_agg[0]), len(peaks_neg_agg[0]))
-        pos_peak_indices_pad_agg = max_pos_peak_agg + [np.nan] * (max_len_agg - len(max_pos_peak_agg))
-        neg_peak_indices_pad_agg = max_neg_peak_agg + [np.nan] * (max_len_agg - len(max_neg_peak_agg))
+        max_len_agg = max(len(max_pos_peak_m[0]), len(max_neg_peak_m[0]))
+        pos_peak_indices_pad_agg = max_pos_peak_m + [np.nan] * (max_len_agg - len(max_pos_peak_m))
+        neg_peak_indices_pad_agg = max_neg_peak_m + [np.nan] * (max_len_agg - len(max_neg_peak_m))
         pd.DataFrame(inflections_array_agg).to_csv('data_outputs/{}/inflections_array_alt.csv'.format(reach_name), index=False)
         max_inflections_df_agg = pd.DataFrame({'pos_inflections':pos_peak_indices_pad_agg, 'neg_inflections':neg_peak_indices_pad_agg})
         max_inflections_df_agg.to_csv('data_outputs/{}/max_inflections_alt.csv'.format(reach_name))
