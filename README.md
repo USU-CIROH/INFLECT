@@ -112,7 +112,7 @@ INFLECT algorithm parameters specify the details of calculating channel widths a
 
 ```python
 # Set INFLECT algorithm parameters
-plot_interval = 1 # set plotting interval along transect in units of meters
+sampling_interval = 1 # set elevation sampling interval along transect in units of meters
 d_interval = 10/100 # Set intervals to step up in depth (in units meters). Default is 10cm intervals
 slope_window = 10 # Set window size for calculating slope for derivatives
 lower_bound = 5 # Set lower vertical boundary for inflection id within cross-section, in units of d_interval. Default 5 = 50cm
@@ -136,7 +136,7 @@ prominence_val = 20 # optional, the prominence required for an individual peak
 There are three analysis functions that perform the calculations necessary to identify major inflections indicating topographic features. All three functions are called from main.py and are listed below:
 
 ```python
-all_widths_df = calc_dwdh(reach_name, cross_sections, dem, plot_interval, d_interval, width_calc_method)
+all_widths_df = calc_dwdh(reach_name, cross_sections, dem, sampling_interval, d_interval, width_calc_method)
 ```
 This function calculates incremental channel widths for each cross section (Fig. 1), which are stored as a set of arrays and returned from the function as the data frame `all_widths_df`. 
 
@@ -157,7 +157,7 @@ An assortment of plots can be generated to visualize the results of the INFLECT 
 #### 1. **Longitudinal Profile plot.** This can be used to determine if your study reach contains drops that may not work well with linear detrending in INFLECT. 
 
 ```python
-plot_longitudinal_profile(reach_name, dem, cross_sections, plot_interval)
+plot_longitudinal_profile(reach_name, dem, cross_sections, sampling_interval)
 ```
 <img src="images/Longitudinal_profile.png" width="500">
 
@@ -171,7 +171,7 @@ plot_bankfull_increments(reach_name, d_interval)
 #### 3. **Cross-section plots.** A plot is generated for every cross-section, with major inflection points overlaid. 
 
 ```python
-transect_plot(cross_sections, dem, plot_interval, d_interval, reach_name)
+transect_plot(cross_sections, dem, sampling_interval, d_interval, reach_name)
 ```
 <img src="images/bankfull_transect_10.jpeg" width="500">
 

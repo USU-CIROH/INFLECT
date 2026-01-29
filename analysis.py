@@ -79,7 +79,7 @@ def find_boundary(xsection, bound):
     bound_index = index 
     return bound_index
 
-def calc_dwdh(reach_name, cross_sections, dem_fp, plot_interval, d_interval, width_calc_method):
+def calc_dwdh(reach_name, cross_sections, dem_fp, sampling_interval, d_interval, width_calc_method):
     # Loop through xsections and create dw/dh array for each xsection
     all_widths_df = pd.DataFrame(columns=['widths']) # df to store width arrays 
     incomplete_intersection_counter = 0
@@ -91,7 +91,7 @@ def calc_dwdh(reach_name, cross_sections, dem_fp, plot_interval, d_interval, wid
         line = gpd.GeoDataFrame({'geometry': [cross_sections_row['geometry']]}, crs=cross_sections.crs) 
         # Generate a spaced interval of stations along each xsection for plotting
         tot_len = line.length
-        distances = np.arange(0, tot_len[0], plot_interval) 
+        distances = np.arange(0, tot_len[0], sampling_interval) 
         stations = cross_sections_row['geometry'].interpolate(distances) # specify stations in transect based on plotting interval
         
         # Extract z elevation at each station along transect
@@ -197,7 +197,7 @@ def calc_dwdh(reach_name, cross_sections, dem_fp, plot_interval, d_interval, wid
             next_transect = cross_sections.iloc[cross_sections_index - 1]
             next_line = gpd.GeoDataFrame({'geometry': [next_transect['geometry']]}, crs=cross_sections.crs)
             next_tot_len = next_line.length
-            next_distances = np.arange(0, next_tot_len[0], plot_interval) 
+            next_distances = np.arange(0, next_tot_len[0], sampling_interval) 
             next_stations = next_transect['geometry'].interpolate(next_distances) # specify stations in transect based on plotting interval
             next_stations = gpd.GeoDataFrame(geometry=next_stations, crs=cross_sections.crs)
             with rasterio.open(dem_fp) as src:

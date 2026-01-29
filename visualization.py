@@ -12,7 +12,7 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 import rasterio
 
-def plot_longitudinal_profile(reach_name, all_widths_df, dem_fp, cross_sections, plot_interval):
+def plot_longitudinal_profile(reach_name, all_widths_df, dem_fp, cross_sections, sampling_interval):
     all_widths_df = pd.read_csv('data_outputs/{}/all_widths.csv'.format(reach_name))
     # Extract and detrend thalweg for plotting
     thalweg_distances = []
@@ -22,7 +22,7 @@ def plot_longitudinal_profile(reach_name, all_widths_df, dem_fp, cross_sections,
         line = gpd.GeoDataFrame({'geometry': [cross_sections_row['geometry']]}, crs=cross_sections.crs) 
         # Generate a spaced interval of stations along each xsection for plotting
         tot_len = line.length
-        distances = np.arange(0, tot_len[0], plot_interval) 
+        distances = np.arange(0, tot_len[0], sampling_interval) 
         stations = cross_sections_row['geometry'].interpolate(distances) # specify stations in transect based on plotting interval
         stations = gpd.GeoDataFrame(geometry=stations, crs=cross_sections.crs)
         # Extract z elevation at each station along transect
@@ -40,7 +40,7 @@ def plot_longitudinal_profile(reach_name, all_widths_df, dem_fp, cross_sections,
             next_transect = cross_sections.iloc[cross_sections_index - 1]
             next_line = gpd.GeoDataFrame({'geometry': [next_transect['geometry']]}, crs=cross_sections.crs)
             next_tot_len = next_line.length
-            next_distances = np.arange(0, next_tot_len[0], plot_interval) 
+            next_distances = np.arange(0, next_tot_len[0], sampling_interval) 
             next_stations = next_transect['geometry'].interpolate(next_distances) # specify stations in transect based on plotting interval
             next_stations = gpd.GeoDataFrame(geometry=next_stations, crs=cross_sections.crs)
             next_elevs = list(dem.sample([(point.x, point.y) for point in next_stations.geometry]))
@@ -130,11 +130,12 @@ def plot_bankfull_increments(reach_name, d_interval):
     sm.set_array([])  # Set array to avoid warnings
     cbar = plt.colorbar(sm, ax=ax)
     cbar.set_label("Downstream distance (m)")
-    plt.xlim(left=left_lim*d_interval, right=array_range[-1])
+    # plt.xlim(left=left_lim*d_interval, right=array_range[-1])
+    plt.xlim(left=-5, right=5)
     plt.savefig('data_outputs/{}/all_widths.jpeg'.format(reach_name), dpi=400)
     plt.close()
 
-def transect_plot(cross_sections, dem_fp, plot_interval, d_interval, reach_name):
+def transect_plot(cross_sections, dem_fp, sampling_interval, d_interval, reach_name):
     inflections = pd.read_csv('data_outputs/{}/max_inflections.csv'.format(reach_name))
     all_widths_df = pd.read_csv('data_outputs/{}/all_widths.csv'.format(reach_name))
     dem = rasterio.open(dem_fp)
@@ -152,7 +153,7 @@ def transect_plot(cross_sections, dem_fp, plot_interval, d_interval, reach_name)
         line = gpd.GeoDataFrame({'geometry': [transects_row['geometry']]}, crs=cross_sections.crs) 
         # Generate a spaced interval of stations along each xsection for plotting
         tot_len = line.length
-        distances = np.arange(0, tot_len[0], plot_interval) 
+        distances = np.arange(0, tot_len[0], sampling_interval) 
         stations = transects_row['geometry'].interpolate(distances) # specify stations in transect based on plotting interval
         stations = gpd.GeoDataFrame(geometry=stations, crs=cross_sections.crs)
         # Extract z elevation at each station along transect
@@ -235,6 +236,7 @@ def plot_inflections(d_interval, reach_name):
                 left_lims.append(i)
                 break
     left_lim = min(left_lims)
+    max_right = 0
     # loop through files and plot
     for index, inflection_fp in enumerate(inflections_fp_sorted): 
         inflection = pd.read_csv(inflection_fp)
@@ -249,10 +251,12 @@ def plot_inflections(d_interval, reach_name):
             inflection = inflection
         # plot all inflections spaghetti style
         x_vals = get_x_vals(inflection, d_interval)
+        if len(x_vals) > max_right: # record right x-limit for plot
+            max_right = len(x_vals)
         plt.plot(x_vals, inflection, alpha=0.5, color=cmap(norm(index)), linewidth=1.25) 
         # run loop to find where to set left limit on plot
         for index, val in enumerate(inflection):
-            if val != 0: # mark first time inflection line exceeds zero (i.e. begins)
+            if abs(val) > 1: # mark first time inflection line exceeds zero (i.e. begins)
                left_lims.append(index)  
                break
     for index, x in enumerate(inflections['pos_inflections']):
@@ -273,12 +277,13 @@ def plot_inflections(d_interval, reach_name):
     x_vals_overlay = get_x_vals(inflections_array, d_interval)
     plt.plot(x_vals_overlay, inflections_array, color='black', linewidth=1.5)
     # set plot xlim as range of x_vals_overlay
-    plt.xlim(left=left_lim * d_interval, right=x_vals_overlay[-1])
+    # plt.xlim(left=left_lim * d_interval, right=max_right*d_interval) # , right=x_vals_overlay[-100]
+    plt.xlim(left=-5, right=5) # , right=x_vals_overlay[-100]
     plt.tight_layout()
     plt.savefig('data_outputs/{}/inflections_all.jpeg'.format(reach_name))
     return
 
-def output_record(reach_name, slope_window, d_interval, lower_bound, upper_bound, width_calc_method, units):
+def output_record(reach_name, slope_window, d_interval, sampling_interval, width_calc_method, units, execution_time_minutes):
     inflections = pd.read_csv('data_outputs/{}/max_inflections.csv'.format(reach_name))
     # Consolidate 'pos_inflections' and 'neg_inflections' columns into single lists
     pos_inflections_all = []
@@ -288,6 +293,6 @@ def output_record(reach_name, slope_window, d_interval, lower_bound, upper_bound
     for val in inflections['neg_inflections']:
         neg_inflections_all.append(val)
     record_df = pd.DataFrame({'positive inflections':[pos_inflections_all], 'negative inflections':[neg_inflections_all], \
-                              'width calc method':[width_calc_method], 'derivative slope_window': [slope_window], 'width calc interval (m)': [d_interval], 'lower_search_bound': [lower_bound], \
-                                'upper_search_bound': [upper_bound], 'units':[units]})
+                              'width calc method':[width_calc_method], 'derivative slope_window': [slope_window], 'width calc interval (m)': [d_interval], \
+                                'sampling interval (m)': [sampling_interval], 'units':[units], 'runtime (min)':[execution_time_minutes]})
     record_df.to_csv('data_outputs/{}/Summary_results.csv'.format(reach_name))

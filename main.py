@@ -23,6 +23,7 @@ from matplotlib import pyplot as plt
 # import dataretrieval.nwis as nwis
 from datetime import datetime
 import sys
+import time
 from analysis import calc_dwdh, inflect, get_raster_boundary
 from visualization import output_record, plot_bankfull_increments, plot_longitudinal_profile, transect_plot, plot_inflections
 from spatial_analysis import create_bankfull_pts
@@ -35,7 +36,7 @@ from spatial_analysis import create_bankfull_pts
 
 # Set INFLECT algorithm parameters
 units = 'meters' # based on units in DEM
-plot_interval = 1 # set plotting interval along transect in units of meters
+sampling_interval = 1 # set elevation sampling interval along transect in units of meters
 d_interval = 10/100 # Set intervals to step up in cross-section depth. Default is units meters and 1/10m intervals
 slope_window = 10 # Set window size for calculating slope for derivatives. Set in d_interval units. 
 lower_bound = 5 # Set lower vertical boundary for inflection id within cross-section, in units of d_interval. Default 5 = 50cm
@@ -49,11 +50,13 @@ distance_val = 5 # The minimum distance required between individual peaks, unitl
 width_val = 2 # The minumum width of an individual peak at the base, unitless
 prominence_val = 20 # optional, the prominence required for an individual peak, unitless
 
-# Specify input data file paths in correct input folder directories
-dem_fp = 'data_inputs/dem/Leggett/dem.tif' # file in 'data_inputs/dem/...' folder
-thalweg_fp = ['data_inputs/thalweg/thalweg.shp']
-cross_sections_fp = ['data_inputs/cross_sections/cross-sections.shp']
+# Start tracking execution time
+start_time = time.time()
 
+# Specify input data file paths in correct input folder directories
+dem_fp = 'data_inputs/Iowa/New_Hartford/dem/dem_10m_HAND.tif' # file in 'data_inputs/dem/...' folder
+thalweg_fp = ['data_inputs/Iowa/New_Hartford/thalweg/thalweg.shp']
+cross_sections_fp = ['data_inputs/Iowa/New_Hartford/cross-sections/cross-sections.shp']
 
 inputs_ls = pd.DataFrame({'thalwegs':thalweg_fp, 'cross-sections':cross_sections_fp})
 inputs_ls = inputs_ls.reset_index()
@@ -61,7 +64,7 @@ inputs_ls = inputs_ls.reset_index()
 for index, row in inputs_ls.iterrows():
     # get reach name from thalweg file path third element when split by'/'  
     # reach_name = row['thalwegs'].split('/')[2]
-    reach_name = 'leggett'
+    reach_name = 'New_Hartford_HAND'
 
     # Create output folders if needed
     if not os.path.exists('data_outputs/{}'.format(reach_name)):
@@ -79,14 +82,19 @@ for index, row in inputs_ls.iterrows():
     thalweg = gpd.read_file(row['thalwegs'])
     cross_sections = gpd.read_file(row['cross-sections'])
 
-    all_widths_df = calc_dwdh(reach_name, cross_sections, dem_fp, plot_interval, d_interval, width_calc_method) # calc widths array for each cross-section
+    all_widths_df = calc_dwdh(reach_name, cross_sections, dem_fp, sampling_interval, d_interval, width_calc_method) # calc widths array for each cross-section
+    print('done!')
     inflect(reach_name, inflect_calc_method, d_interval, all_widths_df, slope_window, max_peak_ratio, distance_val, width_val, prominence_val)
-    output_record(reach_name, slope_window, d_interval, lower_bound, upper_bound, width_calc_method, units)
-
+    # Calculate and save execution time in minutes
+    end_time = time.time()
+    execution_time_minutes = (end_time - start_time) / 60
+    print(f"\nExecution completed in {execution_time_minutes:.2f} minutes")
+    output_record(reach_name, slope_window, d_interval, sampling_interval, width_calc_method, units, execution_time_minutes)
+    
     # Plotting functions
-    plot_longitudinal_profile(reach_name, all_widths_df, dem_fp, cross_sections, plot_interval)
+    plot_longitudinal_profile(reach_name, all_widths_df, dem_fp, cross_sections, sampling_interval)
     plot_bankfull_increments(reach_name, d_interval)
-    transect_plot(cross_sections, dem_fp, plot_interval, d_interval, reach_name)
+    transect_plot(cross_sections, dem_fp, sampling_interval, d_interval, reach_name)
     plot_inflections(d_interval, reach_name)
     # Spatial analysis
     create_bankfull_pts(cross_sections, dem_fp, thalweg, d_interval, spatial_plot_interval, reach_name)
