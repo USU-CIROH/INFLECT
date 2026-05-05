@@ -21,7 +21,6 @@ def create_bankfull_pts(cross_sections, dem_fp, thalweg, d_interval, spatial_plo
     # Create a multipoint object of bankfull extent from the cross-section and aggregate bankfull elevation data
     inflections = pd.read_csv('data_outputs/{}/max_inflections.csv'.format(reach_name))
     dem = rasterio.open(dem_fp)
-
     pos_inflections = inflections['pos_inflections']
     neg_inflections = inflections['neg_inflections']
 
@@ -57,7 +56,6 @@ def create_bankfull_pts(cross_sections, dem_fp, thalweg, d_interval, spatial_plo
                 stations = gpd.GeoDataFrame(geometry=stations, crs=cross_sections.crs)
                 # Extract z elevation at each station along transect
                 elevs = list(dem.sample([(point.x, point.y) for point in stations.geometry]))
-                # current_topo_bf = topo_bankfull['bankfull'].iloc[transect_index]
 
                 # Un-detrend inflection point results
                 current_inflection = inflection * d_interval + fit_slope[transect_index]
@@ -70,56 +68,45 @@ def create_bankfull_pts(cross_sections, dem_fp, thalweg, d_interval, spatial_plo
                         prev_val = elevs[index - 1] - current_inflection
                         if val * prev_val < 0:
                             current_intersect_pts.append(stations['geometry'][index])
-                # If more than two intersection points identified in the transect drop all except two closest to thalweg
+                # If more than two intersection points identified in the transect keep the two closest to center of transect
                 if len(current_intersect_pts) > 2:
-                    # Code from ChatGPT
-                    line = thalweg['geometry']
-                    # 1. select closest segment in thalweg for distance comparison
-                    def closest_segment(line, point):
-                        coords = line.get_coordinates()
-                        min_dist = float('inf')
-                        closest_seg = None
-                        for i in range(len(coords) - 1):
-                            seg = LineString([coords.iloc[i], coords.iloc[i+1]])
-                            dist = point.distance(seg)
-                            if dist < min_dist:
-                                min_dist = dist
-                                closest_seg = seg
-                        return closest_seg
-                    # 2. determine if points are on left or right side of nearest thalweg segment
-                    def side_of_segment(segment, point):
-                        x1, y1 = segment.coords[0]
-                        x2, y2 = segment.coords[1]
+                    # Get the center point and direction of the transect line
+                    line_geom = row['geometry']
+                    line_center = line_geom.interpolate(0.5, normalized=True)
+                    
+                    # Get line direction from start to end
+                    coords = list(line_geom.coords)
+                    start = coords[0]
+                    end = coords[-1]
+                    
+                    # Determine which side of the line each point is on using cross product around center
+                    def side_of_line(point, line_center, line_start, line_end):
+                        x_start, y_start = line_start
+                        x_end, y_end = line_end
+                        x_center, y_center = line_center.x, line_center.y
                         x, y = point.x, point.y
-                        cross = (x2 - x1)*(y - y1) - (y2 - y1)*(x - x1) # calculate cross product of vectors
+                        # Use the transect orientation and translate relative to center
+                        cross = (x_end - x_start) * (x - x_center) + (y_end - y_start) * (y - y_center)
                         return 'left' if cross > 0 else 'right'
                     
-                    point_info = []
+                    # Classify points by side and calculate distance to center
+                    left_points = []
+                    right_points = []
                     for pt in current_intersect_pts:
-                        seg = closest_segment(line, pt)
-                        dist = pt.distance(seg)
-                        side = side_of_segment(seg, pt)
-                        point_info.append({
-                            'point': pt,
-                            'distance': dist,
-                            'side': side,
-                            'segment': seg
-                        })
-                    # 3. select the closest points left and right of the thalweg to keep for mapping 
+                        dist = pt.distance(line_center)
+                        side = side_of_line(pt, line_center, start, end)
+                        if side == 'left':
+                            left_points.append((pt, dist))
+                        else:
+                            right_points.append((pt, dist))
                     
-                    left_points = [p for p in point_info if p['side'] == 'left']
-                    right_points = [p for p in point_info if p['side'] == 'right']
-
-                    if not left_points and not right_points:
-                        # No valid points found, skip to next transect
-                        continue
-
-                    closest_left = min(left_points, key=lambda p: p['distance'], default=None)
-                    closest_right = min(right_points, key=lambda p: p['distance'], default=None)
-                    if closest_left is not None:
-                        intersection_pts.append(closest_left['point'])
-                    if closest_right is not None:
-                        intersection_pts.append(closest_right['point'])
+                    # Get the closest point on each side
+                    if left_points:
+                        closest_left = min(left_points, key=lambda x: x[1])
+                        intersection_pts.append(closest_left[0])
+                    if right_points:
+                        closest_right = min(right_points, key=lambda x: x[1])
+                        intersection_pts.append(closest_right[0])
                 else:
                     if current_intersect_pts:
                         intersection_pts.append(current_intersect_pts[0])
@@ -128,7 +115,8 @@ def create_bankfull_pts(cross_sections, dem_fp, thalweg, d_interval, spatial_plo
         multipoint_geom = MultiPoint(intersection_pts)
         multipoint = gpd.GeoDataFrame(index=[0], crs=cross_sections.crs, geometry=[multipoint_geom])
         multipoint.to_file(filename='data_outputs/{}/spatial/inflections_{}_multipoint.shp'.format(reach_name, sign), driver="ESRI Shapefile")
-    print('positive inflections')
-    map_inflections(pos_inflections, 'positive') 
-    print('negative inflections')   
-    map_inflections(neg_inflections, 'negative')    
+    # To map only one inflection from the list, specify here, e.g. [pos_inflections[1]] or [neg_inflections[0]]
+    print('mapping positive inflections')
+    map_inflections([pos_inflections[1]], 'positive') 
+    print('mapping negative inflections')   
+    map_inflections([neg_inflections[0]], 'negative')    
