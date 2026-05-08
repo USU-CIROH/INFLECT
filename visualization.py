@@ -12,71 +12,33 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 import rasterio
 
-def plot_longitudinal_profile(reach_name, all_widths_df, dem_fp, cross_sections, sampling_interval):
+def plot_longitudinal_profile(reach_name):
     all_widths_df = pd.read_csv('data_outputs/{}/all_widths.csv'.format(reach_name))
     # Extract and detrend thalweg for plotting
-    thalweg_distances = []
-    thalweg_line = []
-    dem = rasterio.open(dem_fp)
-    for cross_sections_index, cross_sections_row in cross_sections.iterrows():
-        line = gpd.GeoDataFrame({'geometry': [cross_sections_row['geometry']]}, crs=cross_sections.crs) 
-        # Generate a spaced interval of stations along each xsection for plotting
-        tot_len = line.length
-        distances = np.arange(0, tot_len[0], sampling_interval) 
-        stations = cross_sections_row['geometry'].interpolate(distances) # specify stations in transect based on plotting interval
-        stations = gpd.GeoDataFrame(geometry=stations, crs=cross_sections.crs)
-        # Extract z elevation at each station along transect
-        elevs = list(dem.sample([(point.x, point.y) for point in stations.geometry]))
-        # remove elevs that were sampled in nodata zone of raster (vals are > 3.4e38)
-        elevs = [elev for elev in elevs if elev < 3e38]
-
-        thalweg = min(elevs) # track this for use later in detrending
-        thalweg_line.append(thalweg)
-        # find station coordinates at thalweg
-        if cross_sections_index > 0: # measure distances for all but first (most upstream) transect
-            thalweg_index = elevs.index(thalweg)
-            thalweg_coords = stations.geometry[thalweg_index]
-            # Get distance from thalweg to next thalweg
-            next_transect = cross_sections.iloc[cross_sections_index - 1]
-            next_line = gpd.GeoDataFrame({'geometry': [next_transect['geometry']]}, crs=cross_sections.crs)
-            next_tot_len = next_line.length
-            next_distances = np.arange(0, next_tot_len[0], sampling_interval) 
-            next_stations = next_transect['geometry'].interpolate(next_distances) # specify stations in transect based on plotting interval
-            next_stations = gpd.GeoDataFrame(geometry=next_stations, crs=cross_sections.crs)
-            next_elevs = list(dem.sample([(point.x, point.y) for point in next_stations.geometry]))
-            next_thalweg = min(next_elevs)
-            next_thalweg_index = next_elevs.index(next_thalweg)
-            next_thalweg_coords = next_stations.geometry[next_thalweg_index]
-            thalweg_distance = next_thalweg_coords.distance(thalweg_coords) # distance to next thalweg, in meters
-        else: 
-            thalweg_distance = 0
-        if cross_sections_index == 0:
-            thalweg_distances.append(thalweg_distance)
-        else:
-            thalweg_distances.append(thalweg_distance + thalweg_distances[cross_sections_index-1])
-
+    thalweg_distances = all_widths_df['thalweg_distance']
+    thalweg_elevs = np.array(all_widths_df['thalweg_elev'])
+    thalweg_tot_len = np.sum(all_widths_df['thalweg_distance'].values)
     thalweg_detrend = []
     # x_vals_thalweg = np.arange(0, len(thalweg_line))
     # x = np.array(x_vals_thalweg).reshape(-1, 1)
     x = np.cumsum(all_widths_df['thalweg_distance'].values).reshape((-1,1))
-    y = np.array(thalweg_line)
+    y = thalweg_elevs
     model = LinearRegression().fit(x, y)
     slope = model.coef_
     intercept = model.intercept_
     fit_slope =  slope*x
     fit_slope = [val[0] for val in fit_slope]
     # pairwise subtract fit from thalwegs
-    for index, val in enumerate(thalweg_line):
+    for index, val in enumerate(thalweg_distances):
         thalweg_detrend.append(val - fit_slope[index])
     # Plot logitudinal profile
-    # breakpoint()
-    df = pd.DataFrame({'thalweg':thalweg_line}); df.to_csv('data_outputs/thalweg.csv')
+    df = pd.DataFrame({'thalweg':thalweg_distances})
     fig, ax = plt.subplots()
     plt.xlabel('Cross-sections from upstream to downstream (m)')
     plt.ylabel('Elevation (m)')
     plt.title('Logitudinal profile, {}'.format(reach_name))
-    plt.plot(thalweg_distances, thalweg_line, color='grey', label='Thalweg')
-    plt.plot(thalweg_distances, fit_slope + intercept, linestyle='--', color='black', label='Linear detrend')
+    plt.plot(x, fit_slope + intercept, linestyle='--', color='black', label='Linear detrend')
+    plt.plot(x, thalweg_elevs, color='grey', label='Thalweg')
     plt.legend(loc='upper right')
     plt.savefig('data_outputs/{}/Longitudinal_profile'.format(reach_name))
     plt.close()
@@ -130,8 +92,7 @@ def plot_bankfull_increments(reach_name, d_interval):
     sm.set_array([])  # Set array to avoid warnings
     cbar = plt.colorbar(sm, ax=ax)
     cbar.set_label("Downstream distance (m)")
-    # plt.xlim(left=left_lim*d_interval, right=array_range[-1])
-    plt.xlim(left=-5, right=5)
+    plt.xlim(left=left_lim*d_interval, right=array_range[-1])
     plt.savefig('data_outputs/{}/all_widths.jpeg'.format(reach_name), dpi=400)
     plt.close()
 
@@ -162,13 +123,8 @@ def transect_plot(cross_sections, dem_fp, sampling_interval, d_interval, reach_n
         elevs = [elev for elev in elevs if elev < 3e38]
 
         # Arrange points together for plotting
-        def get_x_vals(y_vals):
-            x_len = round(len(y_vals) * d_interval, 4)
-            x_vals = np.arange(0, x_len, d_interval)
-            return(x_vals)
         fig = plt.figure(figsize=(6,8))
-        x_vals = get_x_vals(elevs)
-        plt.plot(x_vals, elevs, color='black', linestyle='-', label='Cross section')
+        plt.plot(distances, elevs, color='black', linestyle='-', label='Cross section')
         for index, x in enumerate(inflections['pos_inflections']):
             if index == 0:
                 plt.axhline(x + fit_slope[transects_index], color='red', label='positive inflections', linewidth=2)
@@ -179,7 +135,6 @@ def transect_plot(cross_sections, dem_fp, sampling_interval, d_interval, reach_n
                 plt.axhline(x + fit_slope[transects_index], color='blue', label='negative inflections', linewidth=2)
             else:
                 plt.axhline(x + fit_slope[transects_index], color='blue', linewidth=2)
-
         plt.xlabel('Cross section distance (meters)', fontsize=16)
         plt.ylabel('Elevation (meters)', fontsize=16)
         plt.legend(fontsize=16)
@@ -277,9 +232,7 @@ def plot_inflections(d_interval, reach_name):
     x_vals_overlay = get_x_vals(inflections_array, d_interval)
     plt.plot(x_vals_overlay, inflections_array, color='black', linewidth=1.5)
     # set plot xlim as range of x_vals_overlay
-    # plt.xlim(left=left_lim * d_interval, right=max_right*d_interval) # , right=x_vals_overlay[-100]
-    plt.xlim(left=-5, right=5) # , right=x_vals_overlay[-100]
-    plt.tight_layout()
+    plt.xlim(left=left_lim * d_interval, right=x_vals_overlay[-1]) #max_right*d_interval) 
     plt.savefig('data_outputs/{}/inflections_all.jpeg'.format(reach_name))
     return
 
