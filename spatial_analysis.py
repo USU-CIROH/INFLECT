@@ -117,6 +117,6 @@ def create_bankfull_pts(cross_sections, dem_fp, thalweg, d_interval, spatial_plo
         multipoint.to_file(filename='data_outputs/{}/spatial/inflections_{}_multipoint.shp'.format(reach_name, sign), driver="ESRI Shapefile")
     # To map only one inflection from the list, specify here, e.g. [pos_inflections[1]] or [neg_inflections[0]]
     print('mapping positive inflections')
-    map_inflections(pos_inflections, 'positive') 
+    map_inflections([pos_inflections[1]], 'positive') 
     print('mapping negative inflections')   
     map_inflections(neg_inflections, 'negative')    
