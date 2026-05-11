@@ -303,8 +303,9 @@ def inflect(reach_name, inflect_calc_method, d_interval, all_widths_df, slope_wi
                 peaks_m.append(peak_m)
             return peaks_m
         max_pos_peak_m = convert_m(max_pos_peak, d_interval)
+        max_pos_peak_m = sorted(max_pos_peak_m)
         max_neg_peak_m = convert_m(max_neg_peak, d_interval)
-
+        max_neg_peak_m = sorted(max_neg_peak_m)
         # Save max positive and negative inflections (bankfull range)
         max_len = max(len(max_pos_peak_m), len(max_neg_peak_m))
         pos_peak_indices_pad = max_pos_peak_m + [np.nan] * (max_len - len(max_pos_peak_m))
