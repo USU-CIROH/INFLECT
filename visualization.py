@@ -236,7 +236,7 @@ def plot_inflections(d_interval, reach_name):
     plt.savefig('data_outputs/{}/inflections_all.jpeg'.format(reach_name))
     return
 
-def output_record(reach_name, slope_window, d_interval, sampling_interval, width_calc_method, units, execution_time_minutes):
+def output_record(reach_name, slope_window, d_interval, sampling_interval, width_calc_method, units):
     inflections = pd.read_csv('data_outputs/{}/max_inflections.csv'.format(reach_name))
     # Consolidate 'pos_inflections' and 'neg_inflections' columns into single lists
     pos_inflections_all = []
@@ -247,5 +247,5 @@ def output_record(reach_name, slope_window, d_interval, sampling_interval, width
         neg_inflections_all.append(val)
     record_df = pd.DataFrame({'positive inflections':[pos_inflections_all], 'negative inflections':[neg_inflections_all], \
                               'width calc method':[width_calc_method], 'derivative slope_window': [slope_window], 'width calc interval (m)': [d_interval], \
-                                'sampling interval (m)': [sampling_interval], 'units':[units], 'runtime (min)':[execution_time_minutes]})
+                                'sampling interval (m)': [sampling_interval], 'units':[units]})
     record_df.to_csv('data_outputs/{}/Summary_results.csv'.format(reach_name))

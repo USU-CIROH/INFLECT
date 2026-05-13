@@ -56,7 +56,7 @@ prominence_val = .1 # optional, the prominence required for an individual peak, 
 bankfull = 'yes' # *In development*. 'yes' or 'no', whether to return a bankfull estimate only (yes) or return all major inflections (no)
 
 # Specify input data file paths in correct input folder directories
-station_id = 'Kentucky'
+station_id = 'NF_Kentucky'
 dem_fp = 'data_inputs/Kentucky/dem/dem.tif'
 thalweg_fp = ['data_inputs/Kentucky/centerline/TW.shp']
 cross_section_fp = ['data_inputs/Kentucky/cross-sections/TW_xs.shp']
@@ -104,7 +104,7 @@ for index, row in inputs_ls.iterrows():
     end_time = time.time()
     execution_time_minutes = (end_time - start_time) / 60
     print(f"\nExecution completed in {execution_time_minutes:.2f} minutes")
-    output_record(reach_name, slope_window, d_interval, sampling_interval, width_calc_method, units, execution_time_minutes)
+    output_record(reach_name, slope_window, d_interval, sampling_interval, width_calc_method, units)
     
     # Plotting functions
     print('Generating visualizations...')
