@@ -49,10 +49,10 @@ spatial_plot_interval = 0.5 # interval to measure elevations along transects, de
 width_calc_method = 'partial' # 'continuous' 'partial' - choose from either partial additive widths or continuous-only methods of width calculation.
 # peak detection parameters
 inflect_calc_method = 'cross-section' # 'cross-section' or 'aggregate' method for inflection calculation. 'cross-section' is default. 
-max_peak_ratio = 3 # The ratio of max peak:detected peak. Default val 2 means the detected peak must be one half the magnitude of the maximum peak. 
-distance_val = 1 # The minimum distance required between individual peaks, unitless. Must be greater or equal to 1. 
-width_val = .1 # The minumum width of an individual peak at the base, unitless
-prominence_val = .1 # optional, the prominence required for an individual peak, unitless
+max_peak_ratio = 2 # The ratio of max peak:detected peak. Default val 2 means the detected peak must be one half the magnitude of the maximum peak. 
+distance_val = 5 # The minimum distance required between individual peaks, unitless. Must be greater or equal to 1. 
+width_val = 2 # The minumum width of an individual peak at the base, unitless
+prominence_val = 10 # optional, the prominence required for an individual peak, unitless
 bankfull = 'yes' # *In development*. 'yes' or 'no', whether to return a bankfull estimate only (yes) or return all major inflections (no)
 
 # Specify input data file paths in correct input folder directories
