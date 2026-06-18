@@ -1,10 +1,10 @@
 """
 INFLECT (INFLection-based Elevations from Channel Topography) Method
 
-Primary implementtion script.
+Primary implementation script.
 
 Noelle Patterson, USU
-Funded by CIROH (Cooperative Institute for Research to Operations) 
+Funded by CIROH (Cooperative Institute for Research to Operations in Hydrology) 
 2024/2025
 """
 
@@ -56,10 +56,10 @@ prominence_val = 10 # optional, the prominence required for an individual peak, 
 bankfull = 'yes' # *In development*. 'yes' or 'no', whether to return a bankfull estimate only (yes) or return all major inflections (no)
 
 # Specify input data file paths in correct input folder directories
-station_id = 'NF_Kentucky'
-dem_fp = 'data_inputs/Kentucky/dem/dem.tif'
-thalweg_fp = ['data_inputs/Kentucky/centerline/TW.shp']
-cross_section_fp = ['data_inputs/Kentucky/cross-sections/TW_xs.shp']
+station_id = 'Miranda'
+dem_fp = '/Users/ahurst/Downloads/INFLECT_inputs/Miranda/dem/miranda_1m_bathy.tif'
+thalweg_fp = ['/Users/ahurst/Downloads/INFLECT_inputs/Miranda/thalweg/thalweg.shp']
+cross_section_fp = ['/Users/ahurst/Downloads/INFLECT_inputs/Miranda/cross-sections/Thalweg_10m_adjusted.shp']
 inputs_ls = pd.DataFrame({'station_ids':station_id, 'dems':dem_fp, 'thalwegs':thalweg_fp, 'cross-sections':cross_section_fp})
 inputs_ls = inputs_ls.reset_index()
 
