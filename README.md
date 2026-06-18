@@ -46,7 +46,7 @@ The steps in the dropdown section outline how to install the INFLECT tool and al
   
   In your command line (Command Prompt on Windows, Terminal on Mac), navigate to the folder where you want to save INFLECT and run the following:
   ```python
-  git clone https://github.com/NoellePatterson/INFLECT.git
+  git clone https://github.com/USU-CIROH/INFLECT.git
   cd INFLECT
   ```
   
