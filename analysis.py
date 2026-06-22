@@ -60,14 +60,18 @@ def multipoint_slope(windowsize, timeseries, xvals):
     for n in range(lr_window, len(timeseries) - lr_window):
         x = xvals[n - lr_window:n + lr_window]
         y = timeseries[n - lr_window:n + lr_window]
-        # remove nans with a mask, if there are at least two real data points
-        nancount = sum(1 for x in y if isinstance(x, float) and math.isnan(x))
-        if nancount < 3:
-            mask = ~np.isnan(x) & ~np.isnan(y)
-            slope1, intercept1, r_value1, p_value1, std_err1 = linregress(x[mask], np.array(y)[mask])
-        else: 
-            slope1, intercept1, r_value1, p_value1, std_err1 = linregress(x, np.array(y))
-        dw[n] = slope1  
+        # Begin derivative calcs once all width measurements are non-zero
+        if all(val != 0 for val in y):
+            # remove nans with a mask, if there are at least two real data points
+            nancount = sum(1 for x in y if isinstance(x, float) and math.isnan(x))
+            if nancount > 2:
+                mask = ~np.isnan(x) & ~np.isnan(y)
+                slope1, intercept1, r_value1, p_value1, std_err1 = linregress(x[mask], np.array(y)[mask])
+            else: 
+                slope1, intercept1, r_value1, p_value1, std_err1 = linregress(x, np.array(y))
+            dw[n] = slope1
+        else:
+            dw[n] = 0 
     return dw   
     
 def find_boundary(xsection, bound):
