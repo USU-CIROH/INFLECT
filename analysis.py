@@ -102,9 +102,26 @@ def calc_dwdh(reach_name, cross_sections, dem_fp, sampling_interval, d_interval,
         with rasterio.open(dem_fp) as src:
             # sample() yields pixel values at the given coordinates
             elevs = list(src.sample([(point.x, point.y) for point in stations]))
+        
+        # remove individual elevs that were sampled in nodata zone of raster (vals are > 3.4e38 or < -3.4e38)
+        invalid_elevs = 0
+        valid_elevs = []
+        for elev in elevs:
+            try:
+                val = float(np.asarray(elev).item()) # unpack nested values 
+            except Exception:
+                continue
+            if val > 3e38 or val < -3e38: 
+                invalid_elevs += 1
+            else:
+                valid_elevs.append(val)
 
-        # remove elevs that were sampled in nodata zone of raster (vals are > 3.4e38)
-        elevs = [elev for elev in elevs if elev < 3e38]
+        if len(elevs) > 0 and invalid_elevs > 0.3 * len(elevs):
+            # If more than 30% of sampled points are outside the DEM domain,
+            # abort processing and report a clear error 
+            raise ValueError("Cross-sections must be within the boundary of the input DEM domain.")
+
+        elevs = valid_elevs
         # Determine total depth of iterations based on max rise on the lower bank
         # Assumes cross-section is roughly centered on channel thalweg
         halfway_pt = len(elevs)//2
@@ -124,12 +141,11 @@ def calc_dwdh(reach_name, cross_sections, dem_fp, sampling_interval, d_interval,
 
         depths = max_depth//d_interval
         # If depth is improperly assigned skip to next cross-section
-        if depths[0] == float('inf'):
+        if depths == float('inf'):
             continue
-        
         # calc width at the current depth 
         if width_calc_method == 'partial':
-            for index, depth in enumerate(range(int(depths[0]))):
+            for index, depth in enumerate(range(int(depths))):
                 total_measurements += 1
                 # find intercepts of current d with bed profile (as locs where normalized profile pts have a sign change)
                 wat_level = [x - (d_interval * index) for x in elevs]
@@ -160,7 +176,7 @@ def calc_dwdh(reach_name, cross_sections, dem_fp, sampling_interval, d_interval,
         elif width_calc_method == 'continuous':
             thalweg = min(elevs) 
             thalweg_index = elevs.index(thalweg)
-            for index, depth in enumerate(range(int(depths[0]))):
+            for index, depth in enumerate(range(int(depths))):
                 total_measurements += 1
                 # find intercepts of current d with bed profile (as locs where normalized profile pts have a sign change)
                 wat_level = [x - (d_interval * index) for x in elevs]
@@ -318,6 +334,8 @@ def inflect(reach_name, inflect_calc_method, d_interval, all_widths_df, slope_wi
         max_inflections_df.to_csv('data_outputs/{}/max_inflections.csv'.format(reach_name))
         inflections_array.to_csv('data_outputs/{}/inflections_array.csv'.format(reach_name), index=False)
         # there it is! 
+
+        # Detecting top-of-banks inflection when more than one inflection is identified
 
     if inflect_calc_method == 'aggregate':    
         '''
