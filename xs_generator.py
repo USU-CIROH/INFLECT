@@ -8,9 +8,9 @@ from pynhd import NLDI
 nldi = NLDI()
 
 # Bring in centerline(s)
-centerline_fp = glob.glob('data_inputs/Willamette/Thalweg/Thalweg1.shp')
-centerline_fps = [centerline_fp]
-name = 'Willamette_TW1'
+centerline_fp = glob.glob('data_inputs/Boise/Thalweg/*.shp')
+centerline_fps = centerline_fp
+name = 'Boise'
 
 # XS generation parameters
 xs_num = 60
@@ -57,7 +57,8 @@ def perpendicular_station_line(
     angle = math.atan2(dy, dx)
     perp_angle = angle + math.pi / 2
 
-    cx, cy = station_pt.coords[0]
+    cx = station_pt.coords[0][0]
+    cy = station_pt.coords[0][1]
 
     x1 = cx + half_length * math.cos(perp_angle)
     y1 = cy + half_length * math.sin(perp_angle)
@@ -72,7 +73,9 @@ Loop through list of centerlines, and generate cross-sections
 '''
 
 for index, centerline_fp in enumerate(centerline_fps):
-    segment_gdf = gpd.read_file(centerline_fp[index])
+    centerline_filename = os.path.basename(centerline_fp)
+    centerline_name = os.path.splitext(centerline_filename)[0]
+    segment_gdf = gpd.read_file(centerline_fp)
     segment = segment_gdf.geometry.iloc[0]
     xs_crs = segment_gdf.crs
     # get nearest comid using midpoint of centerline:
@@ -106,4 +109,4 @@ for index, centerline_fp in enumerate(centerline_fps):
     # Export xs and segment as shapefiles
     output_dir = 'data_outputs/{}/cross_sections'.format(name)
     os.makedirs(output_dir, exist_ok=True)
-    cross_sections.to_file('{}/{}_xs.shp'.format(output_dir, name))
+    cross_sections.to_file('{}/{}_xs.shp'.format(output_dir, centerline_name))
