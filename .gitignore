@@ -8,3 +8,4 @@ figures/
 *.pyc
 .vscode/
 __pycache__/
+cache/aiohttp_cache.sqlite
