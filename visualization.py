@@ -119,8 +119,21 @@ def transect_plot(cross_sections, dem_fp, sampling_interval, d_interval, reach_n
         stations = gpd.GeoDataFrame(geometry=stations, crs=cross_sections.crs)
         # Extract z elevation at each station along transect
         elevs = list(dem.sample([(point.x, point.y) for point in stations.geometry]))
-        # remove elevs that were sampled in nodata zone of raster (vals are > 3.4e38)
-        elevs = [elev for elev in elevs if elev < 3e38]
+        # remove individual elevs that were sampled in nodata zone of raster (vals are > 3.4e38 or < -3.4e38)
+        invalid_elevs = 0
+        valid_elevs = []
+        for elev in elevs:
+            try:
+                val = float(np.asarray(elev).item()) # unpack nested values 
+            except Exception:
+                continue
+            if val > 3e38 or val < -3e38: 
+                invalid_elevs += 1
+            else:
+                valid_elevs.append(val)
+
+        if len(elevs) > 0 and invalid_elevs > 0.3 * len(elevs):
+            continue # skip cross-sections in which more than 30% of sample points fall outside of dem domain
 
         # Arrange points together for plotting
         fig = plt.figure(figsize=(6,8))
