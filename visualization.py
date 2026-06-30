@@ -3,6 +3,7 @@ import numpy as np
 from numpy import nan
 import re
 import glob
+from pathlib import Path
 import geopandas as gpd
 from shapely.geometry import Point, shape, MultiPoint
 from shapely.geometry.point import Point
@@ -170,8 +171,9 @@ def plot_inflections(d_interval, reach_name):
     inflections_fp = glob.glob('data_outputs/{}/second_order_roc/*'.format(reach_name))
     # Sort the inflections files numerically
     def extract_num(path):
-        match = re.search(r'\d+', path)
-        return int(match.group()) if match else np.nan 
+        filename = Path(path).name
+        match = re.search(r'\d+', filename)
+        return int(match.group()) if match else np.nan
     inflections_fp_sorted = sorted(inflections_fp, key=extract_num)
     # bring in mean inflections array for plotting
     inflections_array = pd.read_csv('data_outputs/{}/inflections_array.csv'.format(reach_name))
