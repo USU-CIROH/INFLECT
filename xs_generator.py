@@ -1,5 +1,7 @@
-from rasterio import coords
-from shapely.geometry import LineString, Point
+import rasterio
+from rasterio.features import shapes
+from shapely.geometry import LineString, shape
+from shapely.ops import unary_union
 import math
 import geopandas as gpd
 import pandas as pd
@@ -25,6 +27,20 @@ parent_dir = Path(r"/Users/ahurst/Documents/USU/Benchmark_sites_from_SNR")
 xs_num = 60
 width_multiplier = 15 # Set cross-section width as a scalar multiplied by mean river width estimate
 river_widths = pd.read_csv('/Users/ahurst/Documents/USU/Bankfull_Meanflow_CONUS_Stream_Reaches.txt', sep=',')
+
+
+#Cross-section filter function to remove cross-sections with more than 30% of the line outside of the extents of the DEM
+def cross_section_within_dem(line, dem_valid_poly, threshold = 0.7):
+    """
+    Returns True if >= threshold fraction of line lies inside the valid DEM cells
+    """
+
+    if line.length == 0:
+        return False
+    
+    intersection = line.intersection(dem_valid_poly)
+
+    return(intersection.length / line.length >= threshold)
 
 # Define XS-generation function 
 # Code from Chat GPT
@@ -87,7 +103,7 @@ def perpendicular_station_line(line: LineString,
     # ---- clamp distance to valid range ----
     distance = max(0, min(distance, line.length))
 
-    # ---- get point on line ----
+    # ---- get point on line that represents center of the cross-section ----
     p = line.interpolate(distance)
 
     # ---- small offset to compute local direction ----
@@ -99,7 +115,7 @@ def perpendicular_station_line(line: LineString,
     p_before = line.interpolate(d1)
     p_after = line.interpolate(d2)
 
-    # ---- direction vector ----
+    # ---- direction vector to approximate tangent to the centerline----
     dx = p_after.x - p_before.x
     dy = p_after.y - p_before.y
 
@@ -107,7 +123,7 @@ def perpendicular_station_line(line: LineString,
     length = math.hypot(dx, dy)
     ux, uy = dx / length, dy / length
 
-    # perpendicular vector
+    # perpendicular vector for cross-section direction
     px, py = -uy, ux
 
     cx, cy = p.x, p.y
@@ -129,6 +145,30 @@ for reach_dir in parent_dir.iterdir():
     if not reach_dir.is_dir():
         continue
     
+    dem_dir = reach_dir / 'dem'
+    # select 1m DEM if available, otherwise use 10m DEM; this can be edited later when we want to run 10m for comparison
+    dems = list(dem_dir.glob("*.tif"))
+
+    if len(dems) == 0:
+        print(f"No DEM found for {station_id}")
+        continue
+
+    dem_1m = [d for d in dems if '_1m' in d.stem]
+
+    if len(dem_1m) > 0:
+        dem_fp = str(dem_1m[0])
+    else:
+        dem_fp = str(dems[0])  # Use the first available DEM if no 1m DEM is found
+
+
+    with rasterio.open(dem_fp) as src:
+        mask = src.dataset_mask()
+
+        valid_polys = [shape(geom) for geom, val in shapes(mask, mask=mask > 0, transform = src.transform)]
+
+        dem_valid_poly = unary_union(valid_polys)
+
+
     thalweg_dir = reach_dir / 'Thalweg'
 
     if not thalweg_dir.exists():
@@ -146,10 +186,6 @@ for reach_dir in parent_dir.iterdir():
         segment_gdf = gpd.read_file(shp_file)
         segment = segment_gdf.geometry.iloc[0]
         xs_crs = segment_gdf.crs
-
-        print(f"Geometry type: {segment.geom_type}")
-        print(f"Length: {segment.length}")
-        print(f"Num coords: {len(segment.coords)}")
 
         # get nearest comid using midpoint of centerline:
         center_point = segment.interpolate(segment.length / 2)
@@ -169,8 +205,16 @@ for reach_dir in parent_dir.iterdir():
 
         for i in range(xs_per_comid):
             d = i * xs_spacing
+
+            xs_line = perpendicular_station_line(segment, d, half_length=xs_len/2)
+
+            #DEM boundary filter
+            if not cross_section_within_dem(xs_line, dem_valid_poly, threshold = 0.9):
+                print(f"Skipping XS at distance {d:.2f} (outside DEM bounds)")
+                continue
+
             station_geoms.append(
-                perpendicular_station_line(segment, d, half_length=xs_len/2)
+                xs_line
             )
             station_dist.append(d)
 
