@@ -44,77 +44,114 @@ def create_bankfull_pts(cross_sections, dem_fp, thalweg, d_interval, spatial_plo
     fit_slope = [val[0] for val in fit_slope]
     
     def map_inflections(inflections_series, sign):
-        intersection_pts = []
+        records = []
+
         for inf_index, inflection in enumerate(inflections_series):
-            # Loop through cross_sections.
+
+            # Collect points for THIS inflection only
+            intersection_pts = []
+
+            # Loop through cross sections
             for transect_index, row in cross_sections.iterrows():
+
                 line = gpd.GeoDataFrame({'geometry': [row['geometry']]}, crs=cross_sections.crs)
-                # Assign elevational data to line segment. Need to discretize line into closely-spaced points first. 
-                tot_len = line.length
-                distances = np.arange(0, tot_len[0], spatial_plot_interval) 
-                stations = row['geometry'].interpolate(distances) # specify stations in transect based on plotting interval
+                # Assign elevational data to line segment. Need to discretize line into closely-spaced points first.
+                tot_len = line.length.iloc[0]
+                distances = np.arange(0, tot_len, spatial_plot_interval)
+                stations = row['geometry'].interpolate(distances) #specify stations in transect based on plotting interval
                 stations = gpd.GeoDataFrame(geometry=stations, crs=cross_sections.crs)
-                # Extract z elevation at each station along transect
-                elevs = list(dem.sample([(point.x, point.y) for point in stations.geometry]))
+
+                #Extrace z elevation at each station along transect
+                elevs = list(dem.sample([(pt.x, pt.y) for pt in stations.geometry]))
 
                 # Un-detrend inflection point results
-                current_inflection = inflection * d_interval + fit_slope[transect_index]
+                current_inflection = (inflection * d_interval + fit_slope[transect_index])
 
-                # loop through each elev in elevs
+                # Loop through each elev in elevs
                 current_intersect_pts = []
+
                 for index, elev in enumerate(elevs):
+
                     val = elev - current_inflection
+
                     if index > 0:
                         prev_val = elevs[index - 1] - current_inflection
+
                         if val * prev_val < 0:
-                            current_intersect_pts.append(stations['geometry'][index])
-                # If more than two intersection points identified in the transect keep the two closest to center of transect
+                            current_intersect_pts.append(
+                                stations.geometry.iloc[index]
+                            )
+                # If more than two intersection points identified in the transect, keep the two closest to center of transect 
                 if len(current_intersect_pts) > 2:
-                    # Get the center point and direction of the transect line
+                    #Get the center point and direction of the transect line
                     line_geom = row['geometry']
+                    
                     line_center = line_geom.interpolate(0.5, normalized=True)
                     
-                    # Get line direction from start to end
+                    #Get line direction from start to end
                     coords = list(line_geom.coords)
                     start = coords[0]
                     end = coords[-1]
-                    
+
                     # Determine which side of the line each point is on using cross product around center
-                    def side_of_line(point, line_center, line_start, line_end):
-                        x_start, y_start = line_start
-                        x_end, y_end = line_end
-                        x_center, y_center = line_center.x, line_center.y
-                        x, y = point.x, point.y
-                        # Use the transect orientation and translate relative to center
-                        cross = (x_end - x_start) * (x - x_center) + (y_end - y_start) * (y - y_center)
-                        return 'left' if cross > 0 else 'right'
-                    
-                    # Classify points by side and calculate distance to center
-                    left_points = []
-                    right_points = []
+                    def side_of_line(point):
+                        cross = (
+                            (end[0] - start[0]) * (point.x - line_center.x)
+                            + (end[1] - start[1]) * (point.y - line_center.y)
+                        )
+                        return "left" if cross > 0 else "right"
+
+                    # Classify points by side and calcuate distance to center
+                    left = []
+                    right = []
+
                     for pt in current_intersect_pts:
                         dist = pt.distance(line_center)
-                        side = side_of_line(pt, line_center, start, end)
-                        if side == 'left':
-                            left_points.append((pt, dist))
+
+                        if side_of_line(pt) == "left":
+                            left.append((pt, dist))
                         else:
-                            right_points.append((pt, dist))
-                    
+                            right.append((pt, dist))
+
                     # Get the closest point on each side
-                    if left_points:
-                        closest_left = min(left_points, key=lambda x: x[1])
-                        intersection_pts.append(closest_left[0])
-                    if right_points:
-                        closest_right = min(right_points, key=lambda x: x[1])
-                        intersection_pts.append(closest_right[0])
+                    if left:
+                        intersection_pts.append(
+                            min(left, key=lambda x: x[1])[0]
+                        )
+
+                    if right:
+                        intersection_pts.append(
+                            min(right, key=lambda x: x[1])[0]
+                        )
+
                 else:
-                    if current_intersect_pts:
-                        intersection_pts.append(current_intersect_pts[0])
-                        if len(current_intersect_pts) > 1:
-                            intersection_pts.append(current_intersect_pts[1])
-        multipoint_geom = MultiPoint(intersection_pts)
-        multipoint = gpd.GeoDataFrame(index=[0], crs=cross_sections.crs, geometry=[multipoint_geom])
-        multipoint.to_file(filename='data_outputs/{}/spatial/inflections_{}_multipoint.shp'.format(reach_name, sign), driver="ESRI Shapefile")
+
+                    intersection_pts.extend(current_intersect_pts[:2])
+
+            # Save ONE record for this inflection
+            if intersection_pts:
+
+                records.append({
+                    "inflect_id": inf_index,
+                    "sign": sign,
+                    "elevation": current_inflection,
+                    "geometry": MultiPoint(intersection_pts)
+                })
+
+        if not records:
+            print(f"No {sign} inflection intersections found for {reach_name}; skipping shapefile.")
+            return
+        
+        gdf = gpd.GeoDataFrame(
+            records,
+            geometry = "geometry",
+            crs=cross_sections.crs
+        )
+
+        gdf.to_file(
+            f"data_outputs/{reach_name}/spatial/inflections_{sign}_multipoint.shp",
+            driver="ESRI Shapefile"
+        )
     # To map only one inflection from the list, specify here, e.g. [pos_inflections[1]] or [neg_inflections[0]]
     print('mapping positive inflections')
     map_inflections(pos_inflections, 'positive') 
