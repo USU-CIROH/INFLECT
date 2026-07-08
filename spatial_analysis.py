@@ -116,27 +116,29 @@ def create_bankfull_pts(cross_sections, dem_fp, thalweg, d_interval, spatial_plo
                     # Get the closest point on each side
                     if left:
                         intersection_pts.append(
-                            min(left, key=lambda x: x[1])[0]
+                            (min(left, key=lambda x: x[1])[0], 
+                            current_inflection)
                         )
 
                     if right:
                         intersection_pts.append(
-                            min(right, key=lambda x: x[1])[0]
+                            (min(right, key=lambda x: x[1])[0],
+                            current_inflection)
                         )
 
                 else:
 
-                    intersection_pts.extend(current_intersect_pts[:2])
+                    intersection_pts.extend([(pt, current_inflection) for pt in current_intersect_pts[:2]])
 
             # Save ONE record for this inflection
             if intersection_pts:
-
-                records.append({
-                    "inflect_id": inf_index,
-                    "sign": sign,
-                    "elevation": current_inflection,
-                    "geometry": MultiPoint(intersection_pts)
-                })
+                for pt, elev in intersection_pts:
+                    records.append({
+                        "inflect_id": inf_index,
+                        "sign": sign,
+                        "elevation": elev,
+                        "geometry": pt
+                    })
 
         if not records:
             print(f"No {sign} inflection intersections found for {reach_name}; skipping shapefile.")
@@ -149,7 +151,7 @@ def create_bankfull_pts(cross_sections, dem_fp, thalweg, d_interval, spatial_plo
         )
 
         gdf.to_file(
-            f"data_outputs/{reach_name}/spatial/inflections_{sign}_multipoint.shp",
+            f"data_outputs/{reach_name}/spatial/inflections_{sign}.shp",
             driver="ESRI Shapefile"
         )
     # To map only one inflection from the list, specify here, e.g. [pos_inflections[1]] or [neg_inflections[0]]
