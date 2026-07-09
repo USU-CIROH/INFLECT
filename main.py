@@ -47,7 +47,7 @@ slope_window = 10 # Set window size for calculating slope for derivatives. Set i
 lower_bound = 5 # Set lower vertical boundary for inflection id within cross-section, in units of d_interval. Default 5 = 50cm
 upper_bound = 100 # Set upper vertical boundary for inflection id within cross-section, in units of d_interval. Default 100 = 10m
 spatial_plot_interval = 0.5 # interval to measure elevations along transects, default units meters.
-width_calc_method = 'partial' # 'continuous' 'partial' - choose from either partial additive widths or continuous-only methods of width calculation.
+width_calc_method = 'continuous' # 'continuous' 'partial' - choose from either partial additive widths or continuous-only methods of width calculation.
 # peak detection parameters
 inflect_calc_method = 'cross-section' # 'cross-section' or 'aggregate' method for inflection calculation. 'cross-section' is default. 
 max_peak_ratio = 2 # The ratio of max peak:detected peak. Default val 2 means the detected peak must be one half the magnitude of the maximum peak. 
@@ -58,12 +58,19 @@ bankfull = 'yes' # *In development*. 'yes' or 'no', whether to return a bankfull
 
 # Specify input data file paths in correct input folder directories. This pulls from a root directory with subfolders of
 # input files and then creates a dataframe for the inputs.
-root_dir = Path(r'/Users/ahurst/Documents/USU/Benchmark_sites_from_SNR')
 
+# station_id = 'Willamette_1m'
+# dem_fp = 'data_inputs/Willamette/dem_1m.tif'
+# thalweg_fp = ['data_inputs/Willamette/Thalweg1b.shp']
+# cross_section_fp = ['data_inputs/Willamette/Willamette_xs.shp']
+# inputs_ls = pd.DataFrame({'station_ids':station_id, 'dems':dem_fp, 'thalwegs':thalweg_fp, 'cross-sections':cross_section_fp})
+# inputs_ls = inputs_ls.reset_index()
+# reach_name = 'Willamette_1m'
+
+root_dir = Path('/mnt/c/Users/A02466114/OneDrive - USU/Documents/USU_Research/Bankfull Identification/Data/INFLECT_BM_inputs/')
 records = []
 
 for reach_dir in root_dir.iterdir():
-
     if not reach_dir.is_dir():
         continue
 
@@ -98,7 +105,6 @@ for reach_dir in root_dir.iterdir():
         tw_name = tw.stem
 
         #Find matching cross-sections
-
         xs_match = list(xs_dir.glob(f"{tw_name}_xs.shp"))
 
         if len(xs_match) == 0:
@@ -115,17 +121,10 @@ for reach_dir in root_dir.iterdir():
 inputs_ls = pd.DataFrame(records)
 bad_sites = []
 
-# station_id = 'Miranda'
-# dem_fp = '/Users/ahurst/Downloads/INFLECT_inputs/Miranda/dem/miranda_1m_bathy.tif'
-# thalweg_fp = ['/Users/ahurst/Downloads/INFLECT_inputs/Miranda/thalweg/thalweg.shp']
-# cross_section_fp = ['/Users/ahurst/Downloads/INFLECT_inputs/Miranda/cross-sections/Thalweg_10m_adjusted.shp']
-# inputs_ls = pd.DataFrame({'station_ids':station_id, 'dems':dem_fp, 'thalwegs':thalweg_fp, 'cross-sections':cross_section_fp})
-# inputs_ls = inputs_ls.reset_index()
-
 for index, row in inputs_ls.iterrows():
     # Start tracking execution time
     start_time = time.time()
-    reach_name = row['station_ids']
+    reach_name = row['station_ids']+'_continuous'
 
     try:
 
