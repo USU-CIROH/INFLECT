@@ -47,7 +47,7 @@ slope_window = 10 # Set window size for calculating slope for derivatives. Set i
 lower_bound = 5 # Set lower vertical boundary for inflection id within cross-section, in units of d_interval. Default 5 = 50cm
 upper_bound = 100 # Set upper vertical boundary for inflection id within cross-section, in units of d_interval. Default 100 = 10m
 spatial_plot_interval = 0.5 # interval to measure elevations along transects, default units meters.
-width_calc_method = 'partial' # 'continuous' 'partial' - choose from either partial additive widths or continuous-only methods of width calculation.
+width_calc_method = 'continuous' # 'continuous' 'partial' - choose from either partial additive widths or continuous-only methods of width calculation.
 # peak detection parameters
 inflect_calc_method = 'cross-section' # 'cross-section' or 'aggregate' method for inflection calculation. 'cross-section' is default. 
 max_peak_ratio = 2 # The ratio of max peak:detected peak. Default val 2 means the detected peak must be one half the magnitude of the maximum peak. 
