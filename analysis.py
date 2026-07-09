@@ -86,7 +86,6 @@ def find_boundary(xsection, bound):
 def calc_dwdh(reach_name, cross_sections, dem_fp, sampling_interval, d_interval, width_calc_method):
     # Loop through xsections and create dw/dh array for each xsection
     all_widths_df = pd.DataFrame(columns=['widths']) # df to store width arrays 
-    incomplete_intersection_counter = 0
     total_measurements = 0
 
     # for cross_section in cross_sections:
@@ -168,9 +167,7 @@ def calc_dwdh(reach_name, cross_sections, dem_fp, sampling_interval, d_interval,
                     right_bank = max(intercepts)
                     width = right_bank - left_bank
                 else:
-                    # print("Cannot accurately determine width with incomplete xsection intersection. Num intersections = {}.".format(len(intercepts)))
                     width = np.nan
-                    incomplete_intersection_counter += 1 
                 wh_ls.append(width)
 
         elif width_calc_method == 'continuous':
@@ -203,9 +200,7 @@ def calc_dwdh(reach_name, cross_sections, dem_fp, sampling_interval, d_interval,
                     right_bank = max(intercepts)
                     width = right_bank - left_bank
                 else:
-                    print("Cannot accurately determine width with incomplete xsection intersection at cross-section {}. Num intersections = {}.".format(transects_index, len(intercepts)))
                     width = np.nan
-                    incomplete_intersection_counter += 1 
                 wh_ls.append(width)
 
         thalweg = min(elevs) # track this for use later in detrending
