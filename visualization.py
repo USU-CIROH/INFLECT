@@ -13,7 +13,21 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 import rasterio
 
-def plot_longitudinal_profile(reach_name):
+
+def _coerce_widths_column(all_widths_df):
+    if 'widths' in all_widths_df.columns and all_widths_df['widths'].apply(lambda x: isinstance(x, list)).any():
+        return all_widths_df['widths']
+
+    width_cols = [col for col in all_widths_df.columns if col.startswith('widths_')]
+    if width_cols:
+        return all_widths_df[width_cols].apply(
+            lambda row: [row[col] for col in width_cols if pd.notna(row[col])],
+            axis=1,
+        )
+    return all_widths_df['widths'].apply(lambda x: eval(x) if isinstance(x, str) else x)
+
+
+def plot_longitudinal_profile(reach_name, residual_sum, residual_median, total_drop):
     all_widths_df = pd.read_csv('data_outputs/{}/all_widths.csv'.format(reach_name))
     # Extract and detrend thalweg for plotting
     thalweg_distances = all_widths_df['thalweg_distance']
@@ -40,6 +54,8 @@ def plot_longitudinal_profile(reach_name):
     plt.title('Logitudinal profile, {}'.format(reach_name))
     plt.plot(x, fit_slope + intercept, linestyle='--', color='black', label='Linear detrend')
     plt.plot(x, thalweg_elevs, color='grey', label='Thalweg')
+    # add residual sum and median as text on plot
+    plt.text(0.05, 0.95, f'Residual sum: {residual_sum:.2f}\nResidual median: {residual_median:.2f}\nTotal drop: {total_drop:.2f}', transform=ax.transAxes, fontsize=10, verticalalignment='top')
     plt.legend(loc='upper right')
     plt.savefig('data_outputs/{}/Longitudinal_profile'.format(reach_name))
     plt.close()
@@ -50,8 +66,9 @@ def plot_bankfull_increments(reach_name, d_interval):
         x_len = round(len(y_vals) * d_interval, 4)
         x_vals = np.arange(0, x_len, d_interval)
         return(x_vals)
-    for index, row in all_widths_df.iterrows():
-        all_widths_df.at[index, 'widths'] = eval(row['widths'])
+
+    all_widths_df = all_widths_df.copy()
+    all_widths_df['widths'] = _coerce_widths_column(all_widths_df)
 
     # Detrend widths before plotting based on thalweg elevation, and start plotting point based on detrend
     x = np.cumsum(all_widths_df['thalweg_distance'].values).reshape((-1,1))
@@ -101,6 +118,15 @@ def transect_plot(cross_sections, dem_fp, sampling_interval, d_interval, reach_n
     inflections = pd.read_csv('data_outputs/{}/max_inflections.csv'.format(reach_name))
     all_widths_df = pd.read_csv('data_outputs/{}/all_widths.csv'.format(reach_name))
     dem = rasterio.open(dem_fp)
+    # Identify bankfull for plotting, if applicable:
+    if 'bankfull' in inflections.columns and not inflections['bankfull'].isnull().all():
+        bankfull = inflections['bankfull'].dropna().values[0]   
+        # Get bankfull inflection sign based on matching inflection in other row of DF
+        if bankfull in inflections['pos_inflections'].values:
+            bankfull_sign = 'pos'
+        else:
+            bankfull_sign = 'neg'
+
     # Use thalweg elevations to detrend elevation on y-axes for transect plotting. Don't remove intercept (keep at elevation) 
     x = np.cumsum(all_widths_df['thalweg_distance'].values).reshape((-1,1))
     y = np.array(all_widths_df['thalweg_elev'])
@@ -139,16 +165,26 @@ def transect_plot(cross_sections, dem_fp, sampling_interval, d_interval, reach_n
         # Arrange points together for plotting
         fig = plt.figure(figsize=(6,8))
         plt.plot(distances, elevs, color='black', linestyle='-', label='Cross section')
+
+        if bankfull:
+            plot_alpha=0.6
+        else:
+            plot_alpha=1
         for index, x in enumerate(inflections['pos_inflections']):
             if index == 0:
-                plt.axhline(x + fit_slope[transects_index], color='red', label='positive inflections', linewidth=2)
+                plt.axhline(x + fit_slope[transects_index], color='red', label='positive inflections', linewidth=2, alpha=plot_alpha)
             else:
-                plt.axhline(x + fit_slope[transects_index], color='red', linewidth=2)
+                plt.axhline(x + fit_slope[transects_index], color='red', linewidth=2, alpha=plot_alpha)
         for index, x in enumerate(inflections['neg_inflections']):
             if index == 0:
-                plt.axhline(x + fit_slope[transects_index], color='blue', label='negative inflections', linewidth=2)
+                plt.axhline(x + fit_slope[transects_index], color='blue', label='negative inflections', linewidth=2, alpha=plot_alpha)
             else:
-                plt.axhline(x + fit_slope[transects_index], color='blue', linewidth=2)
+                plt.axhline(x + fit_slope[transects_index], color='blue', linewidth=2, alpha=plot_alpha)
+        if bankfull:
+            if bankfull_sign == 'pos':
+                plt.axhline(bankfull + fit_slope[transects_index], color='red', label='bankfull', linewidth=3)
+            else:
+                plt.axhline(bankfull + fit_slope[transects_index], color='blue', label='bankfull', linewidth=3)
         plt.xlabel('Cross section distance (meters)', fontsize=16)
         plt.ylabel('Elevation (meters)', fontsize=16)
         plt.legend(fontsize=16)
@@ -167,6 +203,15 @@ def plot_inflections(d_interval, reach_name):
         x_vals = np.arange(0, x_len, d_interval)
         return(x_vals)
     
+    # Identify bankfull elevation for plotting, if applicable:
+    if 'bankfull' in inflections.columns and not inflections['bankfull'].isnull().all():
+        bankfull = inflections['bankfull'].dropna().values[0]   
+        # Get bankfull inflection sign based on matching inflection in other row of DF
+        if bankfull in inflections['pos_inflections'].values:
+            bankfull_sign = 'pos'
+        else:
+            bankfull_sign = 'neg'
+
     # bring in 2nd derivative files
     inflections_fp = glob.glob('data_outputs/{}/second_order_roc/*'.format(reach_name))
     # Sort the inflections files numerically
@@ -229,16 +274,26 @@ def plot_inflections(d_interval, reach_name):
             if abs(val) > 1: # mark first time inflection line exceeds zero (i.e. begins)
                left_lims.append(index)  
                break
+    if bankfull:
+        plot_alpha = 0.6
+    else:
+        plot_alpha = 1
     for index, x in enumerate(inflections['pos_inflections']):
         if index == 0:
-            plt.axvline(x, color='red', label='positive inflections', linewidth=2)
+            plt.axvline(x, color='red', label='positive inflections', linewidth=2, alpha=plot_alpha)
         else:
-            plt.axvline(x, color='red', linewidth=2)
+            plt.axvline(x, color='red', linewidth=2, alpha=plot_alpha)
     for index, x in enumerate(inflections['neg_inflections']):
         if index == 0:
-            plt.axvline(x, color='blue', label='negative inflections', linewidth=2)
+            plt.axvline(x, color='blue', label='negative inflections', linewidth=2, alpha=plot_alpha)
         else:
-            plt.axvline(x, color='blue', linewidth=2)
+            plt.axvline(x, color='blue', linewidth=2, alpha=plot_alpha)
+    if bankfull:
+        if bankfull_sign == 'pos':
+            plt.axvline(bankfull, color='red', label='bankfull', linewidth=4)
+        else:
+            plt.axvline(bankfull, color='blue', label='bankfull', linewidth=4)
+
     sm = ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])  # Set array to avoid warnings
     cbar = plt.colorbar(sm, ax=ax)

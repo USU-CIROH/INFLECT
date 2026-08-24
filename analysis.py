@@ -231,8 +231,25 @@ def calc_dwdh(reach_name, cross_sections, dem_fp, sampling_interval, d_interval,
 
     all_widths_df.to_csv('data_outputs/{}/all_widths.csv'.format(reach_name))
     return(all_widths_df)
+
+def check_profile(all_widths_df):
+    # calc the linear regression line used in detrending
+    x = np.cumsum(all_widths_df['thalweg_distance'].values).reshape((-1,1))
+    y = np.array(all_widths_df['thalweg_elev'])
+    model = LinearRegression().fit(x, y)
+    slope = model.coef_
+    intercept = model.intercept_
+    fit_slope = slope*x
+    fit_slope = [val[0] for val in fit_slope]
+    # measure the residuals. Add up as the total area under the curve
+    residuals = abs(y - (fit_slope + intercept))
+    residual_sum = sum(residuals) 
+    residual_median = np.nanmedian(residuals)
+    total_drop = max(y) - min(y)
+    return(residual_sum, residual_median, total_drop)
                                 
-def inflect(reach_name, inflect_calc_method, d_interval, all_widths_df, slope_window, max_peak_ratio, distance_val, width_val, prominence_val):
+def inflect(reach_name, inflect_calc_method, d_interval, all_widths_df, slope_window, max_peak_ratio, distance_val, width_val, prominence_val, bankfull_calc):
+    
     # Function for identifying top inflection point peaks
     def top_peaks_id(peaks_array, num_peaks):
         if len(peaks_array[0]) < num_peaks:
@@ -321,11 +338,83 @@ def inflect(reach_name, inflect_calc_method, d_interval, all_widths_df, slope_wi
         max_pos_peak_m = sorted(max_pos_peak_m)
         max_neg_peak_m = convert_m(max_neg_peak, d_interval)
         max_neg_peak_m = sorted(max_neg_peak_m)
+
+        # Identify bankfull inflection from all candidate inflections
+        def select_bankfull(max_pos_peak_m, max_neg_peak_m, all_widths_df, fit_slope):
+            # Create a df with all inflections and their signs, then sort by elevation. Then check if the lowest inflection is positive or negative. If positive, that is the bankfull estimate. If negative, check if there is a positive inflection available. If so, that is the bankfull estimate. 
+            all_inflections = pd.DataFrame({'inflections':max_pos_peak_m + max_neg_peak_m, 'sign':['pos'] * len(max_pos_peak_m) + ['neg'] * len(max_neg_peak_m)})
+            total_inflections = len(max_pos_peak_m) + len(max_neg_peak_m)
+            if total_inflections == 0:
+                bankfull = np.nan
+                return bankfull
+            # If only one inflection, then that is BF estimate
+            elif total_inflections == 1:
+                # return that inflection
+                bankfull = all_inflections.iloc[0]['inflections']
+                return bankfull
+            elif total_inflections > 1:
+                # check if there is a positive inflection (lowest) as candidate
+                if len(max_pos_peak_m) > 0:
+                    bankfull_candidate = max_pos_peak_m[0]
+                    candidate_sign = 'pos'
+                else: 
+                    # if not, select lowest negative inflection as candidate
+                    bankfull_candidate = max_neg_peak_m[0]
+                    candidate_sign = 'neg'
+                # For the candidate inflection, retrend and compare to XS thalwegs in all_widths_df. 
+                # If more than 5% of inflections fall below thalweg, consider another inflection if available. 
+                def candidate_inflection_test(bankfull_candidate, fit_slope, all_widths_df):
+                    xs_num = len(all_widths_df['thalweg_elev'])
+                    inf_retrend = bankfull_candidate + [fit_slope[i] for i in range(0, xs_num)]
+                    elev_diff = inf_retrend - all_widths_df['thalweg_elev']
+                    # count number of values in elev_diff below zero
+                    inflections_blw_thalweg = sum(1 for val in elev_diff if val < 0)
+                    if inflections_blw_thalweg / xs_num > 0.05: # if more than 5% of inflections fall below thalweg
+                        return 'fail'
+                    else:
+                        return 'pass'
+                
+                if candidate_inflection_test(bankfull_candidate, fit_slope, all_widths_df) == 'pass':
+                    bankfull = bankfull_candidate
+                    return bankfull
+                else:
+                    # choose next highest elevation inflection as the candidate regardless of sign.
+                    # get df index of previous candidate infleciton
+                    previous_candidate_index = all_inflections[all_inflections['inflections'] == bankfull_candidate].index[0]
+                    # get next highest inflection
+                    next_inflection = all_inflections.iloc[previous_candidate_index + 1]['inflections']
+                # test next inflection as candidate
+                if next_inflection - bankfull_candidate < 4: # make sure next inflection isn't too much higher than previous
+                    if candidate_inflection_test(next_inflection, fit_slope, all_widths_df) == 'pass':
+                        bankfull = next_inflection
+                        return bankfull
+                    else: 
+                        next_next_inflection = all_inflections.iloc[previous_candidate_index + 2]['inflections']
+                        if next_next_inflection - next_inflection < 4:
+                            if candidate_inflection_test(next_next_inflection, fit_slope, all_widths_df) == 'pass':
+                                bankfull = next_next_inflection
+                                return bankfull
+                            else: # if two inflections higher still dip below thalweg, stop searching and go with first inflection option. 
+                                bankfull = bankfull_candidate
+                                return bankfull
+                else: 
+                    bankfull = bankfull_candidate # If next up inflection is much higher, pick the lowest even though it dips below thalweg.
+                    return bankfull
+                
+        if bankfull_calc == 'yes':
+            bankfull = select_bankfull(max_pos_peak_m, max_neg_peak_m, all_widths_df, fit_slope)
+            print('bankfull = {}'.format(bankfull))
+
         # Save max positive and negative inflections (bankfull range)
         max_len = max(len(max_pos_peak_m), len(max_neg_peak_m))
         pos_peak_indices_pad = max_pos_peak_m + [np.nan] * (max_len - len(max_pos_peak_m))
         neg_peak_indices_pad = max_neg_peak_m + [np.nan] * (max_len - len(max_neg_peak_m))
         max_inflections_df = pd.DataFrame({'pos_inflections':pos_peak_indices_pad, 'neg_inflections':neg_peak_indices_pad})
+        if bankfull:
+            max_inflections_df['bankfull'] = np.nan
+            # create bankfull column with bankfull reported in the first row, and the rest of the rows are blank
+            max_inflections_df.loc[0, 'bankfull'] = bankfull
+
         max_inflections_df.to_csv('data_outputs/{}/max_inflections.csv'.format(reach_name))
         inflections_array.to_csv('data_outputs/{}/inflections_array.csv'.format(reach_name), index=False)
         # there it is! 
