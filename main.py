@@ -24,7 +24,7 @@ from matplotlib import pyplot as plt
 from datetime import datetime
 import sys
 import time
-from analysis import calc_dwdh, inflect, get_raster_boundary
+from analysis import calc_dwdh, inflect, get_raster_boundary, check_profile
 from visualization import output_record, plot_bankfull_increments, plot_longitudinal_profile, transect_plot, plot_inflections
 from spatial_analysis import create_bankfull_pts
 from pathlib import Path
@@ -54,7 +54,7 @@ max_peak_ratio = 2 # The ratio of max peak:detected peak. Default val 2 means th
 distance_val = 5 # The minimum distance required between individual peaks, unitless. Must be greater or equal to 1. 
 width_val = 2 # The minumum width of an individual peak at the base, unitless
 prominence_val = 10 # optional, the prominence required for an individual peak, unitless
-bankfull = 'yes' # *In development*. 'yes' or 'no', whether to return a bankfull estimate only (yes) or return all major inflections (no)
+bankfull_calc = 'yes' # 'yes' or 'no', whether to return a bankfull estimate (yes) or return all major inflections (no)
 
 # Specify input data file paths in correct input folder directories. This pulls from a root directory with subfolders of
 # input files and then creates a dataframe for the inputs.
@@ -79,19 +79,19 @@ for reach_dir in root_dir.iterdir():
     dem_dir = reach_dir / 'dem'
     thalweg_dir = reach_dir / 'Thalweg'
     xs_dir = reach_dir / 'Cross_Sections'
-
     if not dem_dir.exists():
         print(f"Missing DEM folder: {station_id}")
         continue
-
+    
     # select 1m DEM if available, otherwise use 10m DEM; this can be edited later when we want to run 10m for comparison
     dems = list(dem_dir.glob("*.tif"))
 
     if len(dems) == 0:
         print(f"No DEM found for {station_id}")
         continue
-
+  
     dem_1m = [d for d in dems if '_1m' in d.stem]
+    dem_10m = [d for d in dems if d.stem == 'dem']
 
     if len(dem_1m) > 0:
         dem_fp = str(dem_1m[0])
@@ -159,22 +159,22 @@ for index, row in inputs_ls.iterrows():
         dem_fp = row['dems']
         all_widths_df = calc_dwdh(reach_name, cross_sections, dem_fp, sampling_interval, d_interval, width_calc_method) # calc widths array for each cross-section
         print('width calcs done!')
-        inflect(reach_name, inflect_calc_method, d_interval, all_widths_df, slope_window, max_peak_ratio, distance_val, width_val, prominence_val)
+        residual_sum, residual_median, total_drop = check_profile(all_widths_df)
+        inflect(reach_name, inflect_calc_method, d_interval, all_widths_df, slope_window, max_peak_ratio, distance_val, width_val, prominence_val, bankfull_calc)
         # Calculate and save execution time in minutes
         end_time = time.time()
         execution_time_minutes = (end_time - start_time) / 60
         print(f"\nExecution completed in {execution_time_minutes:.2f} minutes")
         output_record(reach_name, slope_window, d_interval, sampling_interval, width_calc_method, units)
         
-        # Plotting functions
+        # # Plotting functions
         print('Generating visualizations...')
-        plot_longitudinal_profile(reach_name)
+        plot_longitudinal_profile(reach_name, residual_sum, residual_median, total_drop)
         plot_bankfull_increments(reach_name, d_interval)
         transect_plot(cross_sections, dem_fp, sampling_interval, d_interval, reach_name)
         plot_inflections(d_interval, reach_name)
-        # Spatial analysis
+        # # Spatial analysis
         create_bankfull_pts(cross_sections, dem_fp, thalweg, d_interval, spatial_plot_interval, reach_name)
-
     except ValueError as e:
         print(f"\n FAILED: {reach_name}")
         print(f"Reason: {e}\n")
