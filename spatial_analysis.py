@@ -24,6 +24,15 @@ def create_bankfull_pts(cross_sections, dem_fp, thalweg, d_interval, spatial_plo
     pos_inflections = inflections['pos_inflections']
     neg_inflections = inflections['neg_inflections']
 
+    # Include a separate shapefile for bankfull if applicable
+    if 'bankfull' in inflections.columns and not inflections['bankfull'].isnull().all():
+        bankfull_inflection = inflections['bankfull'].dropna().values[0]  
+        # Get bankfull inflection sign based on matching inflection in other row of DF
+        if bankfull_inflection in inflections['pos_inflections'].values:
+            bankfull_sign = 'pos'
+        else:
+            bankfull_sign = 'neg'
+
     # Put inflections back in units of d_interval
     def convert_d_int(inflect_ls, d_interval):
         inflections_dint = []
@@ -33,6 +42,8 @@ def create_bankfull_pts(cross_sections, dem_fp, thalweg, d_interval, spatial_plo
         return inflections_dint
     pos_inflections = convert_d_int(pos_inflections, d_interval)
     neg_inflections = convert_d_int(neg_inflections, d_interval)
+    if bankfull_inflection:
+        bankfull_inflection = convert_d_int([bankfull_inflection], d_interval)
 
     # Use thalweg elevs to un-detrend inflection point result for map-based plotting
     x = np.cumsum(all_widths_df['thalweg_distance'].values).reshape((-1,1))
@@ -155,7 +166,7 @@ def create_bankfull_pts(cross_sections, dem_fp, thalweg, d_interval, spatial_plo
             driver="ESRI Shapefile"
         )
     # To map only one inflection from the list, specify here, e.g. [pos_inflections[1]] or [neg_inflections[0]]
-    print('mapping positive inflections')
+    print('mapping inflections')
     map_inflections(pos_inflections, 'positive') 
-    print('mapping negative inflections')   
     map_inflections(neg_inflections, 'negative')    
+    map_inflections(bankfull_inflection, 'bankfull') 
